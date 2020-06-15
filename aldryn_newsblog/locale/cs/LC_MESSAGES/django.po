@@ -73,7 +73,7 @@ msgstr "Další článek"
 #: templates/aldryn_newsblog/plugins/latest_articles.html:6
 #: templates/aldryn_newsblog/plugins/related_articles.html:11
 msgid "No items available"
-msgstr ""
+msgstr "Nejsou k dispozici žádné položky"
 
 #: boilerplates/bootstrap3/templates/aldryn_newsblog/includes/pagination.html:8
 msgid "First"
@@ -102,7 +102,7 @@ msgstr "Poslední články obsahující \"<strong>%(query)s</strong>\""
 #: boilerplates/bootstrap3/templates/aldryn_newsblog/includes/search_results.html:19
 #: templates/aldryn_newsblog/includes/search_results.html:21
 msgid "No articles found"
-msgstr ""
+msgstr "Nebyly nalezeny žádné články"
 
 #: boilerplates/bootstrap3/templates/aldryn_newsblog/includes/search_results.html:21
 #: templates/aldryn_newsblog/includes/search_results.html:23
@@ -196,15 +196,15 @@ msgstr ""
 
 #: cms_appconfig.py:57
 msgid "Paginate size"
-msgstr ""
+msgstr "Velikost stránkování"
 
 #: cms_appconfig.py:60
 msgid "When paginating list views, how many articles per page?"
-msgstr ""
+msgstr "Pokud se objeví stránkování, kolik článků připadne na stránku?"
 
 #: cms_appconfig.py:63
 msgid "Pagination pages start"
-msgstr ""
+msgstr "Začátek stránkování"
 
 #: cms_appconfig.py:66
 msgid ""
@@ -224,7 +224,7 @@ msgstr ""
 
 #: cms_appconfig.py:77
 msgid "Excluded featured articles count"
-msgstr ""
+msgstr "Počet vyloučených doporučených článků"
 
 #: cms_appconfig.py:81
 msgid ""
@@ -233,30 +233,33 @@ msgid ""
 "avoid duplicates. To do this, enter the same number here as in your Featured"
 " Articles plugin."
 msgstr ""
+"Používáte-li zásuvný modul Doporučené články v zobrazení seznamu článků, můžete "
+"raději vyloučit vybrané články ze seznamu článků, abyste se vyhnuli duplikátům. "
+"Chcete-li to provést, zadejte stejné číslo jako v zásuvném modulu Doporučené články."
 
 #: cms_appconfig.py:90
 msgid "Prefix for template dirs"
-msgstr ""
+msgstr "Předpona pro složku se šablonami"
 
 #: cms_appconfig.py:94
 msgid "Auto-create authors?"
-msgstr ""
+msgstr "Automatické vytváření autorů?"
 
 #: cms_appconfig.py:96
 msgid "Automatically create authors from logged-in user?"
-msgstr ""
+msgstr "Automaticky vytvořit autory z přihlášených uživatelů?"
 
 #: cms_appconfig.py:101
 msgid "Include in search index?"
-msgstr ""
+msgstr "Zahrnout do indexu vyhledávání?"
 
 #: cms_appconfig.py:103
 msgid "Include articles in search indexes?"
-msgstr ""
+msgstr "Zahrnout články do indexů vyhledávání?"
 
 #: cms_appconfig.py:142
 msgid "untitled"
-msgstr ""
+msgstr "nepojmenovaný"
 
 #: cms_appconfig.py:145
 #| msgid "application title"
@@ -270,7 +273,7 @@ msgstr ""
 
 #: cms_appconfig.py:151
 msgid "Post published by default"
-msgstr ""
+msgstr "Příspěvek publikován ve výchozím nastavení"
 
 #: cms_apps.py:15
 msgid "NewsBlog"
@@ -278,59 +281,59 @@ msgstr ""
 
 #: cms_plugins.py:66
 msgid "Archive"
-msgstr ""
+msgstr "Archív"
 
 #: cms_plugins.py:86
 msgid "Article Search"
-msgstr ""
+msgstr "Vyhledávání v archívu"
 
 #: cms_plugins.py:100
 msgid "Authors"
-msgstr ""
+msgstr "Autoři"
 
 #: cms_plugins.py:118
 msgid "Categories"
-msgstr ""
+msgstr "Kategorie"
 
 #: cms_plugins.py:135
 msgid "Featured Articles"
-msgstr ""
+msgstr "Doporučené články"
 
 #: cms_plugins.py:149
 msgid "Latest Articles"
-msgstr ""
+msgstr "Nejnovější články"
 
 #: cms_plugins.py:163
 msgid "Related Articles"
-msgstr ""
+msgstr "Související články"
 
 #: cms_plugins.py:191
 msgid "Tags"
-msgstr ""
+msgstr "Značky"
 
 #: cms_toolbars.py:92
 msgid "Configure addon"
-msgstr ""
+msgstr "Konfigurovat addon"
 
 #: cms_toolbars.py:103
 msgid "Article list"
-msgstr ""
+msgstr "Seznam článků"
 
 #: cms_toolbars.py:110
 msgid "Add new article"
-msgstr ""
+msgstr "Přidat nový článek"
 
 #: cms_toolbars.py:118
 msgid "Edit this article"
-msgstr ""
+msgstr "Editovat tento článek"
 
 #: cms_toolbars.py:126
 msgid "Delete this article"
-msgstr ""
+msgstr "Smazat tento článek"
 
 #: cms_wizards.py:68
 msgid "Content"
-msgstr ""
+msgstr "Obsah"
 
 #: cms_wizards.py:72
 msgid ""
@@ -344,17 +347,17 @@ msgstr ""
 
 #: cms_wizards.py:132
 msgid "New news/blog article"
-msgstr ""
+msgstr "Nový news/blog článek"
 
 #: cms_wizards.py:135
 msgid "Create a new news/blog article."
-msgstr ""
+msgstr "Vytvořit nový news/blog článek"
 
 #: feeds.py:37
 #, python-format
 #| msgid "Articles on {0}"
 msgid "Articles on %(site_name)s"
-msgstr ""
+msgstr "Články na %(site_name)s"
 
 #: menu.py:20
 msgid "Aldryn NewsBlog Menu"
@@ -362,11 +365,11 @@ msgstr ""
 
 #: models.py:77
 msgid "untitled-article"
-msgstr ""
+msgstr "clanek-bez-nazvu"
 
 #: models.py:88
 msgid "title"
-msgstr ""
+msgstr "název"
 
 #: models.py:90
 msgid "slug"
@@ -380,7 +383,7 @@ msgstr ""
 
 #: models.py:99
 msgid "lead"
-msgstr ""
+msgstr "úvod"
 
 #: models.py:101
 msgid ""
@@ -402,11 +405,11 @@ msgstr ""
 
 #: models.py:122
 msgid "author"
-msgstr ""
+msgstr "autor"
 
 #: models.py:123
 msgid "owner"
-msgstr ""
+msgstr "vlastník"
 
 #: models.py:125 models.py:286
 msgid "Apphook configuration"
@@ -414,28 +417,28 @@ msgstr ""
 
 #: models.py:127
 msgid "categories"
-msgstr ""
+msgstr "kategorie"
 
 #: models.py:129
 msgid "publishing date"
-msgstr ""
+msgstr "datum publikování"
 
 #: models.py:131
 msgid "is published"
-msgstr ""
+msgstr "je publikován"
 
 #: models.py:133
 msgid "is featured"
-msgstr ""
+msgstr "je doporučen"
 
 #: models.py:136
 #| msgid "featured article"
 msgid "featured image"
-msgstr ""
+msgstr "obrázek k doporučení"
 
 #: models.py:152
 msgid "related articles"
-msgstr ""
+msgstr "související články"
 
 #: models.py:271
 msgid ""
@@ -446,42 +449,42 @@ msgstr ""
 #: models.py:301 models.py:312
 #, python-format
 msgid "%s archive"
-msgstr ""
+msgstr "%s archívů"
 
 #: models.py:306
 msgid "max articles"
-msgstr ""
+msgstr "max článků"
 
 #: models.py:308
 msgid "The maximum number of found articles display."
-msgstr ""
+msgstr "Zobrazí se maximální počet nalezených článků."
 
 #: models.py:353
 #, python-format
 msgid "%s authors"
-msgstr ""
+msgstr "%s autorů"
 
 #: models.py:359
 #, python-format
 msgid "%s categories"
-msgstr ""
+msgstr "%s kategorií"
 
 #: models.py:403
 msgid "The maximum number of featured articles display."
-msgstr ""
+msgstr "Zobrazí se maximální počet nalezených článků."
 
 #: models.py:426
 msgid "featured article"
-msgstr ""
+msgstr "doporučený článek"
 
 #: models.py:428
 #, python-format
 msgid "featured articles: %(count)s"
-msgstr ""
+msgstr "doporučené články: %(count)s"
 
 #: models.py:440
 msgid "The maximum number of latest articles to display."
-msgstr ""
+msgstr "Zobrazí se maximální počet posledních článků."
 
 #: models.py:446
 msgid ""
@@ -492,16 +495,16 @@ msgstr ""
 #: models.py:474
 #, python-format
 msgid "%(app_title)s latest articles: %(latest_articles)s"
-msgstr ""
+msgstr "%(app_title)s nejnověnší články: %(latest_articles)s"
 
 #: models.py:502
 msgid "Related articles"
-msgstr ""
+msgstr "Související články"
 
 #: models.py:544
 #, python-format
 msgid "%s tags"
-msgstr ""
+msgstr "%s značek"
 
 #~ msgid "app. config"
 #~ msgstr "app. config"

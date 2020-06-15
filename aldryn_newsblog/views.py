@@ -158,6 +158,8 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
             self.queryset, self.object)
         context['next_article'] = self.get_next_object(
             self.queryset, self.object)
+        context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
+        context['aldryn_newsblog_hide_author'] = self.config.hide_author
         return context
 
     def get_prev_object(self, queryset=None, object=None):
@@ -229,6 +231,8 @@ class ArticleListBase(AppConfigMixin, AppHookCheckMixin, TemplatePrefixMixin,
     def get_context_data(self, **kwargs):
         context = super(ArticleListBase, self).get_context_data(**kwargs)
         context['pagination'] = self.get_pagination_options()
+        context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
+        context['aldryn_newsblog_hide_author'] = self.config.hide_author
         return context
 
 
