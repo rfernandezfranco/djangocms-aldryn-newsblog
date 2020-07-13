@@ -33,12 +33,13 @@ class NewsBlogMenu(CMSAttachMenu):
 
         if hasattr(self, 'instance') and self.instance:
             app = apphook_pool.get_apphook(self.instance.application_urls)
-
-        if app:
-            config = app.get_config(self.instance.application_namespace)
-
-            if config:
-                articles = articles.filter(app_config=config)
+            if app:
+                try:
+                    config = app.get_config(self.instance.application_namespace)
+                    if config:
+                        articles = articles.filter(app_config=config)
+                except NotImplementedError as msg:
+                    pass  # Configurable AppHooks must implement this method
 
         for article in articles:
             try:

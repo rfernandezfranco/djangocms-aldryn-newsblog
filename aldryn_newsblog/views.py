@@ -158,8 +158,9 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
             self.queryset, self.object)
         context['next_article'] = self.get_next_object(
             self.queryset, self.object)
-        context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
-        context['aldryn_newsblog_hide_author'] = self.config.hide_author
+        if self.config is not None:
+            context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
+            context['aldryn_newsblog_hide_author'] = self.config.hide_author
         return context
 
     def get_prev_object(self, queryset=None, object=None):
@@ -231,8 +232,9 @@ class ArticleListBase(AppConfigMixin, AppHookCheckMixin, TemplatePrefixMixin,
     def get_context_data(self, **kwargs):
         context = super(ArticleListBase, self).get_context_data(**kwargs)
         context['pagination'] = self.get_pagination_options()
-        context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
-        context['aldryn_newsblog_hide_author'] = self.config.hide_author
+        if self.config is not None:
+            context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
+            context['aldryn_newsblog_hide_author'] = self.config.hide_author
         return context
 
 
@@ -245,15 +247,16 @@ class ArticleList(ArticleListBase):
 
     def get_queryset(self):
         qs = super(ArticleList, self).get_queryset()
-        # exclude featured articles from queryset, to allow featured article
-        # plugin on the list view page without duplicate entries in page qs.
-        exclude_count = self.config.exclude_featured
-        if exclude_count:
-            featured_qs = Article.objects.all().filter(is_featured=True)
-            if not self.edit_mode:
-                featured_qs = featured_qs.published()
-            exclude_featured = featured_qs[:exclude_count].values_list('pk')
-            qs = qs.exclude(pk__in=exclude_featured)
+        if self.config is not None:
+            # exclude featured articles from queryset, to allow featured article
+            # plugin on the list view page without duplicate entries in page qs.
+            exclude_count = self.config.exclude_featured
+            if exclude_count:
+                featured_qs = Article.objects.all().filter(is_featured=True)
+                if not self.edit_mode:
+                    featured_qs = featured_qs.published()
+                exclude_featured = featured_qs[:exclude_count].values_list('pk')
+                qs = qs.exclude(pk__in=exclude_featured)
         return qs
 
 
