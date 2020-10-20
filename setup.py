@@ -13,7 +13,7 @@ REQUIREMENTS = [
     'aldryn-categories>=1.2.0<2.0.0',
     'aldryn-common>=1.0.5<2.0.0',
     'aldryn-people>=2.2.0<3.0.0',
-    'aldryn-translation-tools>=0.3.0<1.0.0',
+    'aldryn-translation-tools @ git+https://github.com/zbohm/aldryn-translation-tools.git@update-to-django2',
     'backport-collections>=0.1<1.0.0',
     'django-appdata>==0.3.0<1.0.0',
     'djangocms-text-ckeditor>=3.9.1<4.0.0',

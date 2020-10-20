@@ -40,6 +40,10 @@ msgstr "Zrušit označení vybraných článků jako významné"
 msgid "Meta Options"
 msgstr ""
 
+#: aldryn_translation_tools_installed/admin.py:135
+msgid "Translations"
+msgstr "Překlady"
+
 #: admin.py:137
 msgid "Advanced Settings"
 msgstr "Pokročilé nastavení"
@@ -505,6 +509,3 @@ msgstr "Související články"
 #, python-format
 msgid "%s tags"
 msgstr "%s značek"
-
-#~ msgid "app. config"
-#~ msgstr "app. config"
