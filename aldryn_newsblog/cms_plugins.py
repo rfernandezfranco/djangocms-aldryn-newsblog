@@ -218,3 +218,16 @@ class NewsBlogTagsPlugin(NewsBlogPlugin):
             '{0}:article-list'.format(instance.app_config.namespace),
             default=None)
         return context
+
+
+@plugin_pool.register_plugin
+class NewsBlogSerialEpisodesPlugin(AdjustableCacheMixin, NewsBlogPlugin):
+    render_template = 'aldryn_newsblog/plugins/serial_episodes.html'
+    name = _('Serial episodes')
+
+    def render(self, context, instance, placeholder):
+        context = super().render(context, instance, placeholder)
+        article = context.get('article')
+        if article is not None and article.serial is not None:
+            context['serial_episodes'] = article.serial.article_set.exclude(pk=article.pk).order_by('article__episode')
+        return context

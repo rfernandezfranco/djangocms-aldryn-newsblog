@@ -63,6 +63,15 @@ SQL_IS_TRUE = {
 }[connection.vendor]
 
 
+class Serial(models.Model):
+    """Article as a serial."""
+
+    name = models.CharField(_('Name'), max_length=255)
+
+    def __str__(self):
+        return self.name
+
+
 @python_2_unicode_compatible
 class Article(TranslatedAutoSlugifyMixin,
               TranslationHelperMixin,
@@ -159,6 +168,9 @@ class Article(TranslatedAutoSlugifyMixin,
     # https://github.com/django/django/blob/1.8.4/django/db/models/fields/related.py#L977
     related = SortedManyToManyField('self', verbose_name=_('related articles'),
                                     blank=True, symmetrical=False)
+
+    serial = models.ForeignKey(Serial, verbose_name=_('Serial'), null=True, blank=True, on_delete=models.SET_NULL)
+    episode = models.PositiveIntegerField(verbose_name=_('Episode'), default=1)
 
     objects = RelatedManager()
 

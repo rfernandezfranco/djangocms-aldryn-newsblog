@@ -375,6 +375,18 @@ msgstr "clanek-bez-nazvu"
 msgid "title"
 msgstr "název"
 
+msgid "Serial Options"
+msgstr "Seriál nastavení"
+
+msgid "Serial episodes"
+msgstr "Díly seriálu"
+
+msgid "Serial"
+msgstr "Seriál"
+
+msgid "Episode"
+msgstr "Díl seriálu"
+
 #: models.py:90
 msgid "slug"
 msgstr ""

@@ -2,13 +2,19 @@ Changelog
 =========
 
 
-Uunreleased
-===========
+Unreleased
+==========
 
 * Updated translations
 * Fixed error when page with attached menu without apphook was not working
 * Removed the dollar from the routes
 * Fixed article search functionality to work with django CMS 3.6
+
+
+3.1.0 (2022-01-10)
+==================
+
+* Add model Serial and field Episode into Article. Add NewsBlogSerialEpisodesPlugin.
 
 3.0.1 (2022-01-09)
 ==================

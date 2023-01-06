@@ -68,6 +68,8 @@ class ArticleAdminForm(TranslatableModelForm):
             'slug',
             'tags',
             'title',
+            'serial',
+            'episode',
         ]
 
     def __init__(self, *args, **kwargs):
@@ -128,6 +130,13 @@ class ArticleAdmin(
                 'lead_in',
             )
         }),
+        (_('Serial Options'), {
+            'classes': ('collapse',),
+            'fields': (
+                'serial',
+                'episode',
+            )
+        }),
         (_('Meta Options'), {
             'classes': ('collapse',),
             'fields': (
@@ -172,6 +181,7 @@ class ArticleAdmin(
 
 
 admin.site.register(models.Article, ArticleAdmin)
+admin.site.register(models.Serial)
 
 
 class NewsBlogConfigAdmin(
