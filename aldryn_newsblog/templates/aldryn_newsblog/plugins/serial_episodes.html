@@ -1,4 +1,4 @@
-<div class="newsblog-serial">
+<div class="newsblog-serial" data-episode_total="{{ article.serial.article_set.count }}">
     {% for article in serial_episodes %}
         <div class="episode episode-position-{{ article.episode }}" data-episode_position="{{ article.episode }}">
             {% include "aldryn_newsblog/plugins/article.html" with namespace=instance.app_config.namespace %}

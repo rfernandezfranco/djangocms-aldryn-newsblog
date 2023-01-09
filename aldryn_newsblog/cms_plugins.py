@@ -229,5 +229,5 @@ class NewsBlogSerialEpisodesPlugin(AdjustableCacheMixin, NewsBlogPlugin):
         context = super().render(context, instance, placeholder)
         article = context.get('article')
         if article is not None and article.serial is not None:
-            context['serial_episodes'] = article.serial.article_set.exclude(pk=article.pk).order_by('article__episode')
+            context['serial_episodes'] = article.serial.article_set.exclude(pk=article.pk).order_by('article__episode', 'article__pk')
         return context
