@@ -2,14 +2,30 @@ Changelog
 =========
 
 
-2.2.2 (unreleased)
-==================
+Uunreleased
+===========
 
 * Updated translations
 * Fixed error when page with attached menu without apphook was not working
 * Removed the dollar from the routes
 * Fixed article search functionality to work with django CMS 3.6
 
+3.0.1 (2022-01-09)
+==================
+
+* Fix recursive error of plugin in article detail.
+
+3.0.0.1 (2020-10-20)
+====================
+
+* Use aldryn-translation-tools updated to Django 2.x.
+
+3.0.0.0 (2020-08-20)
+====================
+
+* Adjust the order of urls for resolving views.
+* Fix missing optional attribute application_urls in model cms.Page. Fix NotImplementedError in application_namespace.
+* Hida author photo. Display no-photo icon.
 
 2.2.1 (2019-02-12)
 ==================
