@@ -180,8 +180,23 @@ class ArticleAdmin(
         return super(ArticleAdmin, self).add_view(request, *args, **kwargs)
 
 
+class SerialAdmin(admin.ModelAdmin):
+    list_display = ('name', 'episodes_count')
+    change_form_template = "aldryn_newsblog/admin/serial_episodes_change_form.html"
+
+    def episodes_count(self, obj: models.Serial) -> int:
+        return models.Article.objects.filter(serial=obj).count()
+    episodes_count.short_description = _('Total episodes')
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        if extra_context is None:
+            extra_context = {}
+        extra_context['serial_episodes'] = models.Article.objects.filter(serial_id=object_id).order_by('article__episode', 'article__pk')
+        return self.changeform_view(request, object_id, form_url, extra_context)
+
+
 admin.site.register(models.Article, ArticleAdmin)
-admin.site.register(models.Serial)
+admin.site.register(models.Serial, SerialAdmin)
 
 
 class NewsBlogConfigAdmin(

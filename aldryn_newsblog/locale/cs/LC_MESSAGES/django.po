@@ -521,3 +521,6 @@ msgstr "Související články"
 #, python-format
 msgid "%s tags"
 msgstr "%s značek"
+
+msgid "Total episodes"
+msgstr "Díly celkem"
