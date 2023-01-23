@@ -45,7 +45,11 @@
     </div>
 
     <div class="lead">
-        {% render_model article "lead_in" %}
+        {% if detail_view %}
+            {% render_model article "lead_in" %}
+        {% else %}
+            {% render_model article "lead_in" "" language "truncatechars_html:180" %}
+        {% endif %}
     </div>
 
     {% if detail_view %}
