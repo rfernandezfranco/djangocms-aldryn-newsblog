@@ -1,17 +1,14 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from django import forms
 
 from . import models
 
 
-class AutoAppConfigFormMixin(object):
+class AutoAppConfigFormMixin:
     """
     If there is only a single AppConfig to choose, automatically select it.
     """
     def __init__(self, *args, **kwargs):
-        super(AutoAppConfigFormMixin, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         if 'app_config' in self.fields:
             # if has only one choice, select it by default
             if self.fields['app_config'].queryset.count() == 1:

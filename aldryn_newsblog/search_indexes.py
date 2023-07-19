@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from django.conf import settings
 
 from aldryn_search.utils import get_index_base
@@ -40,7 +37,7 @@ class ArticleIndex(get_index_base()):
         return kwargs
 
     def get_index_queryset(self, language):
-        queryset = super(ArticleIndex, self).get_index_queryset(language)
+        queryset = super().get_index_queryset(language)
         return queryset.published().language(language)
 
     def get_model(self):

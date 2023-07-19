@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from datetime import date, datetime
 
 from django.db.models import Q
@@ -29,7 +25,7 @@ from .models import Article
 from .utils import add_prefix_to_path
 
 
-class TemplatePrefixMixin(object):
+class TemplatePrefixMixin:
 
     def prefix_template_names(self, template_names):
         if (hasattr(self.config, 'template_prefix') and  # noqa: W504
@@ -41,11 +37,11 @@ class TemplatePrefixMixin(object):
         return template_names
 
     def get_template_names(self):
-        template_names = super(TemplatePrefixMixin, self).get_template_names()
+        template_names = super().get_template_names()
         return self.prefix_template_names(template_names)
 
 
-class EditModeMixin(object):
+class EditModeMixin:
     """
     A mixin which sets the property 'edit_mode' with the truth value for
     whether a user is logged-into the CMS and is in edit-mode.
@@ -55,7 +51,7 @@ class EditModeMixin(object):
     def dispatch(self, request, *args, **kwargs):
         self.edit_mode = (
             self.request.toolbar and toolbar_edit_mode_active(self.request))
-        return super(EditModeMixin, self).dispatch(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
 
 
 class PreviewModeMixin(EditModeMixin):
@@ -64,7 +60,7 @@ class PreviewModeMixin(EditModeMixin):
     published articles should be returned.
     """
     def get_queryset(self):
-        qs = super(PreviewModeMixin, self).get_queryset()
+        qs = super().get_queryset()
         # check if user can see unpublished items. this will allow to switch
         # to edit mode instead of 404 on article detail page. CMS handles the
         # permissions.
@@ -77,12 +73,12 @@ class PreviewModeMixin(EditModeMixin):
         return qs
 
 
-class AppHookCheckMixin(object):
+class AppHookCheckMixin:
 
     def dispatch(self, request, *args, **kwargs):
         self.valid_languages = get_valid_languages_from_request(
             self.namespace, request)
-        return super(AppHookCheckMixin, self).dispatch(
+        return super().dispatch(
             request, *args, **kwargs)
 
     def get_queryset(self):
@@ -91,7 +87,7 @@ class AppHookCheckMixin(object):
         # on translated fields (parler/django limitation).
         # if your mixin contains filtering after super call - please place it
         # after this mixin.
-        qs = super(AppHookCheckMixin, self).get_queryset()
+        qs = super().get_queryset()
         return qs.translated(*self.valid_languages)
 
 
@@ -116,7 +112,7 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
         url = self.object.get_absolute_url()
         if self.config.non_permalink_handling == 200 or request.path == url:
             # Continue as normal
-            return super(ArticleDetail, self).get(request, *args, **kwargs)
+            return super().get(request, *args, **kwargs)
 
         # Check to see if the URL path matches the correct absolute_url of
         # the found object
@@ -147,13 +143,13 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
             return DetailView.get_object(self, queryset=queryset)
         elif slug is not None:
             # Let the TranslatedSlugMixin take over
-            return super(ArticleDetail, self).get_object(queryset=queryset)
+            return super().get_object(queryset=queryset)
 
         raise AttributeError('ArticleDetail view must be called with either '
                              'an object pk or a slug')
 
     def get_context_data(self, **kwargs):
-        context = super(ArticleDetail, self).get_context_data(**kwargs)
+        context = super().get_context_data(**kwargs)
         context['prev_article'] = self.get_prev_object(
             self.queryset, self.object)
         context['next_article'] = self.get_next_object(
@@ -230,7 +226,7 @@ class ArticleListBase(AppConfigMixin, AppHookCheckMixin, TemplatePrefixMixin,
         return options
 
     def get_context_data(self, **kwargs):
-        context = super(ArticleListBase, self).get_context_data(**kwargs)
+        context = super().get_context_data(**kwargs)
         context['pagination'] = self.get_pagination_options()
         if self.config is not None:
             context['aldryn_newsblog_display_author_no_photo'] = self.config.author_no_photo
@@ -246,7 +242,7 @@ class ArticleList(ArticleListBase):
         return self.get(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = super(ArticleList, self).get_queryset()
+        qs = super().get_queryset()
         if self.config is not None:
             # exclude featured articles from queryset, to allow featured article
             # plugin on the list view page without duplicate entries in page qs.
@@ -270,7 +266,7 @@ class ArticleSearchResultsList(ArticleListBase):
         self.query = request.GET.get('q')
         self.max_articles = request.GET.get('max_articles', 0)
         self.edit_mode = (request.toolbar and toolbar_edit_mode_active(request))
-        return super(ArticleSearchResultsList, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def post(self, request, *args, **kwargs):
         return self.get(request, *args, **kwargs)
@@ -280,11 +276,10 @@ class ArticleSearchResultsList(ArticleListBase):
         If a max_articles was set (by a plugin), use that figure, else,
         paginate by the app_config's settings.
         """
-        return self.max_articles or super(
-            ArticleSearchResultsList, self).get_paginate_by(self.get_queryset())
+        return self.max_articles or super().get_paginate_by(self.get_queryset())
 
     def get_queryset(self):
-        qs = super(ArticleSearchResultsList, self).get_queryset()
+        qs = super().get_queryset()
         if not self.edit_mode:
             qs = qs.published()
         if self.query:
@@ -297,7 +292,7 @@ class ArticleSearchResultsList(ArticleListBase):
             return qs.none()
 
     def get_context_data(self, **kwargs):
-        cxt = super(ArticleSearchResultsList, self).get_context_data(**kwargs)
+        cxt = super().get_context_data(**kwargs)
         cxt['query'] = self.query
         return cxt
 
@@ -314,7 +309,7 @@ class AuthorArticleList(ArticleListBase):
     def get_queryset(self):
         # Note: each Article.author is Person instance with guaranteed
         # presence of unique slug field, which allows to use it in URLs
-        return super(AuthorArticleList, self).get_queryset().filter(
+        return super().get_queryset().filter(
             author=self.author
         )
 
@@ -325,34 +320,34 @@ class AuthorArticleList(ArticleListBase):
             language, slug=author).first()
         if not self.author:
             raise Http404('Author not found')
-        return super(AuthorArticleList, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def post(self, request, author, *args, **kwargs):
         return self.get(request, author, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         kwargs['newsblog_author'] = self.author
-        return super(AuthorArticleList, self).get_context_data(**kwargs)
+        return super().get_context_data(**kwargs)
 
 
 class CategoryArticleList(ArticleListBase):
     """A list of articles filtered by categories."""
     def get_queryset(self):
-        return super(CategoryArticleList, self).get_queryset().filter(
+        return super().get_queryset().filter(
             categories=self.category
         )
 
     def get(self, request, category, *args, **kwargs):
         self.category = get_object_or_404(
             Category, translations__slug=category)
-        return super(CategoryArticleList, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def post(self, request, category, *args, **kwargs):
         return self.get(request, category, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         kwargs['newsblog_category'] = self.category
-        ctx = super(CategoryArticleList, self).get_context_data(**kwargs)
+        ctx = super().get_context_data(**kwargs)
         ctx['newsblog_category'] = self.category
         return ctx
 
@@ -360,26 +355,26 @@ class CategoryArticleList(ArticleListBase):
 class TagArticleList(ArticleListBase):
     """A list of articles filtered by tags."""
     def get_queryset(self):
-        return super(TagArticleList, self).get_queryset().filter(
+        return super().get_queryset().filter(
             tags=self.tag
         )
 
     def get(self, request, tag, *args, **kwargs):
         self.tag = get_object_or_404(Tag, slug=tag)
-        return super(TagArticleList, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def post(self, request, tag, *args, **kwargs):
         return self.get(request, tag, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         kwargs['newsblog_tag'] = self.tag
-        return super(TagArticleList, self).get_context_data(**kwargs)
+        return super().get_context_data(**kwargs)
 
 
 class DateRangeArticleList(ArticleListBase):
     """A list of articles for a specific date range"""
     def get_queryset(self):
-        return super(DateRangeArticleList, self).get_queryset().filter(
+        return super().get_queryset().filter(
             publishing_date__gte=self.date_from,
             publishing_date__lt=self.date_to
         )
@@ -390,7 +385,7 @@ class DateRangeArticleList(ArticleListBase):
 
     def get(self, request, *args, **kwargs):
         self.date_from, self.date_to = self._daterange_from_kwargs(kwargs)
-        return super(DateRangeArticleList, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def post(self, request, *args, **kwargs):
         return self.get(request, *args, **kwargs)
@@ -407,7 +402,7 @@ class DateRangeArticleList(ArticleListBase):
                 kwargs['newsblog_year'],
                 kwargs['newsblog_month'] or 1,
                 kwargs['newsblog_day'] or 1)
-        return super(DateRangeArticleList, self).get_context_data(**kwargs)
+        return super().get_context_data(**kwargs)
 
 
 class YearArticleList(DateRangeArticleList):

@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 import os
 
 from django.conf import settings
@@ -37,7 +33,7 @@ class TestModels(NewsBlogTestCase):
 
     def test_auto_slugifies(self):
         activate(self.language)
-        title = u'This is a title'
+        title = 'This is a title'
         author = self.create_person()
         article = Article.objects.create(
             title=title, author=author, owner=author.user,
@@ -45,7 +41,7 @@ class TestModels(NewsBlogTestCase):
             is_published=True,
         )
         article.save()
-        self.assertEquals(article.slug, 'this-is-a-title')
+        self.assertEqual(article.slug, 'this-is-a-title')
         # Now, let's try another with the same title
         article_1 = Article(
             title=title.lower(),
@@ -59,7 +55,7 @@ class TestModels(NewsBlogTestCase):
         # constraint on the field.
         article_1.save()
         # Note that this should be "incremented" slug here.
-        self.assertEquals(article_1.slug, 'this-is-a-title-1')
+        self.assertEqual(article_1.slug, 'this-is-a-title-1')
         article_2 = Article(
             title=title.upper(),
             author=author,
@@ -69,7 +65,7 @@ class TestModels(NewsBlogTestCase):
             is_published=True,
         )
         article_2.save()
-        self.assertEquals(article_2.slug, 'this-is-a-title-2')
+        self.assertEqual(article_2.slug, 'this-is-a-title-2')
 
     def test_auto_existing_author(self):
         author = self.create_person()
@@ -79,7 +75,7 @@ class TestModels(NewsBlogTestCase):
             is_published=True,
         )
         article.save()
-        self.assertEquals(article.author.user, article.owner)
+        self.assertEqual(article.author.user, article.owner)
 
         old = self.app_config.create_authors
         self.app_config.create_authors = False
@@ -91,7 +87,7 @@ class TestModels(NewsBlogTestCase):
         )
         self.app_config.create_authors = old
         self.app_config.save()
-        self.assertEquals(article.author, None)
+        self.assertEqual(article.author, None)
 
     def test_auto_new_author(self):
         user = self.create_user()
@@ -101,8 +97,7 @@ class TestModels(NewsBlogTestCase):
             is_published=True,
         )
         article.save()
-        self.assertEquals(article.author.name,
-                          u' '.join((user.first_name, user.last_name)))
+        self.assertEqual(article.author.name, ' '.join((user.first_name, user.last_name)))
 
     def test_auto_search_data(self):
         activate(self.language)
@@ -125,8 +120,8 @@ class TestModels(NewsBlogTestCase):
 
         search_data = article.get_search_data()
 
-        self.assertEquals(lead_in, search_data)
-        self.assertEquals(article.search_data, search_data)
+        self.assertEqual(lead_in, search_data)
+        self.assertEqual(article.search_data, search_data)
 
     def test_auto_search_data_off(self):
         activate(self.language)
@@ -151,8 +146,8 @@ class TestModels(NewsBlogTestCase):
         # set it back to true
         Article.update_search_on_save = True
 
-        self.assertEquals(lead_in, search_data)
-        self.assertNotEquals(article.search_data, search_data)
+        self.assertEqual(lead_in, search_data)
+        self.assertNotEqual(article.search_data, search_data)
 
     def test_has_content(self):
         # Just make sure we have a known language
@@ -190,15 +185,15 @@ class TestModels(NewsBlogTestCase):
             is_published=True,
         )
         article.save()
-        self.assertEquals(article.title, initial_title)
-        self.assertEquals(article.slug, initial_slug)
+        self.assertEqual(article.title, initial_title)
+        self.assertEqual(article.slug, initial_slug)
         # Now, let's try to change the title
         new_title = "This is the new title"
         article.title = new_title
         article.save()
         article = self.reload(article)
-        self.assertEquals(article.title, new_title)
-        self.assertEquals(article.slug, initial_slug)
+        self.assertEqual(article.title, new_title)
+        self.assertEqual(article.slug, initial_slug)
 
 
 class TestModelsTransactions(NewsBlogTransactionTestCase):
@@ -235,9 +230,9 @@ class TestModelsTransactions(NewsBlogTransactionTestCase):
                         article.title = title
                         article.save()
                     except Exception:
-                        self.fail('Creating article in process context "{0}" '
-                            'and article language "{1}" with identical name '
-                            'as another "{2}" article raises exception'.format(
+                        self.fail('Creating article in process context "{}" '
+                            'and article language "{}" with identical name '
+                            'as another "{}" article raises exception'.format(
                                 context_lang,
                                 article_lang,
                                 original_lang,

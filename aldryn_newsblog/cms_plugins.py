@@ -1,10 +1,6 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from distutils.version import LooseVersion
 
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from cms import __version__ as cms_version
 from cms.plugin_base import CMSPluginBase
@@ -17,7 +13,7 @@ from .utils import add_prefix_to_path, default_reverse
 CMS_GTE_330 = LooseVersion(cms_version) >= LooseVersion('3.3.0')
 
 
-class TemplatePrefixMixin(object):
+class TemplatePrefixMixin:
 
     def get_render_template(self, context, instance, placeholder):
         if (hasattr(instance, 'app_config') and  # noqa: W504
@@ -40,7 +36,7 @@ class NewsBlogPlugin(TemplatePrefixMixin, CMSPluginBase):
         return context
 
 
-class AdjustableCacheMixin(object):
+class AdjustableCacheMixin:
     """
     For django CMS < 3.3.0 installations, we have no choice but to disable the
     cache where there is time-sensitive information. However, in later CMS
@@ -57,7 +53,7 @@ class AdjustableCacheMixin(object):
         Removes the cache_duration field from the displayed form if we're not
         using django CMS v3.3.0 or later.
         """
-        fieldsets = super(AdjustableCacheMixin, self).get_fieldsets(request, obj=None)
+        fieldsets = super().get_fieldsets(request, obj=None)
         if CMS_GTE_330:
             return fieldsets
 
@@ -100,7 +96,7 @@ class NewsBlogArticleSearchPlugin(NewsBlogPlugin):
     def render(self, context, instance, placeholder):
         context = super().render(context, instance, placeholder)
         context['instance'] = instance
-        context['query_url'] = default_reverse('{0}:article-search'.format(
+        context['query_url'] = default_reverse('{}:article-search'.format(
             instance.app_config.namespace), default=None)
         return context
 
@@ -118,7 +114,7 @@ class NewsBlogAuthorsPlugin(NewsBlogPlugin):
         context['instance'] = instance
         context['authors_list'] = instance.get_authors(request)
         context['article_list_url'] = default_reverse(
-            '{0}:article-list'.format(instance.app_config.namespace),
+            f'{instance.app_config.namespace}:article-list',
             default=None)
 
         return context
@@ -138,7 +134,7 @@ class NewsBlogCategoriesPlugin(NewsBlogPlugin):
         context['instance'] = instance
         context['categories'] = instance.get_categories(request)
         context['article_list_url'] = default_reverse(
-            '{0}:article-list'.format(instance.app_config.namespace),
+            f'{instance.app_config.namespace}:article-list',
             default=None)
         return context
 
@@ -184,7 +180,7 @@ class NewsBlogRelatedPlugin(AdjustableCacheMixin, NewsBlogPlugin):
         if request and request.resolver_match:
             view_name = request.resolver_match.view_name
             namespace = request.resolver_match.namespace
-            if view_name == '{0}:article-detail'.format(namespace):
+            if view_name == f'{namespace}:article-detail':
                 article = models.Article.objects.active_translations(
                     slug=request.resolver_match.kwargs['slug'])
                 if article.count() == 1:
@@ -215,7 +211,7 @@ class NewsBlogTagsPlugin(NewsBlogPlugin):
         context['instance'] = instance
         context['tags'] = instance.get_tags(request)
         context['article_list_url'] = default_reverse(
-            '{0}:article-list'.format(instance.app_config.namespace),
+            f'{instance.app_config.namespace}:article-list',
             default=None)
         return context
 
@@ -229,5 +225,6 @@ class NewsBlogSerialEpisodesPlugin(AdjustableCacheMixin, NewsBlogPlugin):
         context = super().render(context, instance, placeholder)
         article = context.get('article')
         if article is not None and article.serial is not None:
-            context['serial_episodes'] = article.serial.article_set.exclude(pk=article.pk).order_by('article__episode', 'article__pk')
+            context['serial_episodes'] = article.serial.article_set.exclude(pk=article.pk).order_by(
+                'article__episode', 'article__pk')
         return context

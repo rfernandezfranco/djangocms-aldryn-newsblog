@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Aldryn Newsblog documentation build configuration file, created by
 # sphinx-quickstart on Wed Dec 10 15:42:58 2014.
@@ -44,8 +43,8 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'Aldryn News & Blog'
-copyright = u'2014, Divio AG'
+project = 'Aldryn News & Blog'
+copyright = '2014, Divio AG'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -215,8 +214,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [(
-    'index', 'AldrynNewsblog.tex', u'Aldryn News & Blog Documentation',
-    u'Divio AG', 'manual'
+    'index', 'AldrynNewsblog.tex', 'Aldryn News & Blog Documentation',
+    'Divio AG', 'manual'
 )]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -245,8 +244,8 @@ latex_documents = [(
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'aldrynnewsblog', u'Aldryn News & Blog Documentation',
-     [u'Divio AG'], 1)
+    ('index', 'aldrynnewsblog', 'Aldryn News & Blog Documentation',
+     ['Divio AG'], 1)
 ]
 
 # If true, show URL addresses after external links.
@@ -259,8 +258,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [(
-    'index', 'AldrynNewsblog', u'Aldryn News & Blog Documentation',
-    u'Divio AG', 'AldrynNewsblog', 'Aldryn News & Blog is an Aldryn-compatible'
+    'index', 'AldrynNewsblog', 'Aldryn News & Blog Documentation',
+    'Divio AG', 'AldrynNewsblog', 'Aldryn News & Blog is an Aldryn-compatible'
     ' news and weblog application for django CMS.',
     'Miscellaneous'
 )]

@@ -6,7 +6,6 @@
 cms/django
 *.DS_Store
 *.svn
-.*
 !.tx
 !.travis.yml
 !.coveragerc

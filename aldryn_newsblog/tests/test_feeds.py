@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from datetime import timedelta
 
 from django.test import TransactionTestCase
@@ -23,7 +19,7 @@ class TestFeeds(NewsBlogTestsMixin, TransactionTestCase):
             is_published=True,
         )
         url = reverse(
-            '{0}:article-list-feed'.format(self.app_config.namespace)
+            f'{self.app_config.namespace}:article-list-feed'
         )
         self.request = self.get_request('en', url)
         self.request.current_page = self.page
@@ -36,7 +32,7 @@ class TestFeeds(NewsBlogTestsMixin, TransactionTestCase):
         articles = self.create_tagged_articles()
 
         url = reverse(
-            '{0}:article-list-by-tag-feed'.format(self.app_config.namespace),
+            f'{self.app_config.namespace}:article-list-by-tag-feed',
             args=['tag1']
         )
         self.request = self.get_request('en', url)
@@ -57,7 +53,7 @@ class TestFeeds(NewsBlogTestsMixin, TransactionTestCase):
             different_category_article = self.create_article()
             different_category_article.categories.add(self.category2)
             url = reverse(
-                '{0}:article-list-by-category-feed'.format(
+                '{}:article-list-by-category-feed'.format(
                     self.app_config.namespace),
                 args=[self.category1.slug]
             )

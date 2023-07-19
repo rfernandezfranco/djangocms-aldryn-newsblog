@@ -1,13 +1,9 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 import datetime
 import time
 
 from django.core.cache import cache
 from django.urls import reverse
-from django.utils.encoding import force_text
+from django.utils.encoding import force_str
 from django.utils.translation import override
 
 from cms import api
@@ -25,7 +21,7 @@ class TestAppConfigPluginsBase(NewsBlogTestCase):
     plugin_params = {}
 
     def setUp(self):
-        super(TestAppConfigPluginsBase, self).setUp()
+        super().setUp()
         self.placeholder = self.plugin_page.placeholders.all()[0]
         api.add_plugin(
             self.placeholder, self.plugin_to_test, self.language,
@@ -37,7 +33,7 @@ class TestAppConfigPluginsBase(NewsBlogTestCase):
             namespace=self.rand_str())
 
 
-class TestPluginLanguageHelperMixin(object):
+class TestPluginLanguageHelperMixin:
     def _test_plugin_languages_with_article(self, article):
         """Set up conditions to test plugin languages edge cases"""
         # Add 'de' translation to one of the articles
@@ -73,15 +69,15 @@ class TestArchivePlugin(TestAppConfigPluginsBase):
             article = self.create_article(publishing_date=d)
             articles.append(article)
         response = self.client.get(self.plugin_page.get_absolute_url())
-        response_content = force_text(response.content)
+        response_content = force_str(response.content)
         needle = '<a href="/en/page/{year}/{month}/"[^>]*>'
         '[^<]*<span class="badge">{num}</span>'
         month1 = needle.format(year=2014, month=11, num=2)
         month2 = needle.format(year=2015, month=2, num=1)
         month3 = needle.format(year=2015, month=1, num=3)
-        self.assertRegexpMatches(response_content, month1)
-        self.assertRegexpMatches(response_content, month2)
-        self.assertRegexpMatches(response_content, month3)
+        self.assertRegex(response_content, month1)
+        self.assertRegex(response_content, month2)
+        self.assertRegex(response_content, month3)
 
 
 class TestArticleSearchPlugin(TestAppConfigPluginsBase):
@@ -135,24 +131,24 @@ class TestAuthorsPlugin(TestAppConfigPluginsBase):
         time.sleep(1)
 
         response = self.client.get(self.plugin_page.get_absolute_url())
-        response_content = force_text(response.content)
+        response_content = force_str(response.content)
         # This pattern tries to accommodate all the templates from all the
         # versions of this package.
-        pattern = '<a href="{url}">\s*</a>'  # noqa: #W605
+        pattern = r'<a href="{url}">\s*</a>'  # noqa: #W605
         author1_pattern = pattern.format(
             url=reverse(
-                '{0}:article-list-by-author'.format(self.app_config.namespace),
+                f'{self.app_config.namespace}:article-list-by-author',
                 args=[author1.slug]
             )
         )
         author2_pattern = pattern.format(
             url=reverse(
-                '{0}:article-list-by-author'.format(self.app_config.namespace),
+                f'{self.app_config.namespace}:article-list-by-author',
                 args=[author2.slug]
             )
         )
-        self.assertRegexpMatches(response_content, author1_pattern)
-        self.assertRegexpMatches(response_content, author2_pattern)
+        self.assertRegex(response_content, author1_pattern)
+        self.assertRegex(response_content, author2_pattern)
 
 
 class TestCategoriesPlugin(TestAppConfigPluginsBase):
@@ -189,15 +185,15 @@ class TestCategoriesPlugin(TestAppConfigPluginsBase):
         time.sleep(1)
 
         response = self.client.get(self.plugin_page.get_absolute_url())
-        response_content = force_text(response.content)
+        response_content = force_str(response.content)
         # We use two different patterns in alternation because different
         # versions of newsblog have different templates
-        pattern = '<span[^>]*>{num}</span>\s*<a href=[^>]*>{name}</a>'  # noqa: #W605
-        pattern += '|<a href=[^>]*>{name}</a>\s*<span[^>]*>{num}</span>'  # noqa: #W605
+        pattern = r'<span[^>]*>{num}</span>\s*<a href=[^>]*>{name}</a>'  # noqa: #W605
+        pattern += r'|<a href=[^>]*>{name}</a>\s*<span[^>]*>{num}</span>'  # noqa: #W605
         needle1 = pattern.format(num=3, name=self.category1.name)
         needle2 = pattern.format(num=5, name=self.category2.name)
-        self.assertRegexpMatches(response_content, needle1)
-        self.assertRegexpMatches(response_content, needle2)
+        self.assertRegex(response_content, needle1)
+        self.assertRegex(response_content, needle2)
 
 
 class TestFeaturedArticlesPlugin(TestPluginLanguageHelperMixin,
@@ -324,7 +320,7 @@ class TestPrefixedLatestArticlesPlugin(TestAppConfigPluginsBase):
     }
 
     def setUp(self):
-        super(TestPrefixedLatestArticlesPlugin, self).setUp()
+        super().setUp()
         self.app_config.template_prefix = 'dummy'
         self.app_config.save()
 
@@ -365,7 +361,7 @@ class TestRelatedArticlesPlugin(TestPluginLanguageHelperMixin,
                 main_article.related.add(a)
                 another_language_articles.append(a)
 
-        self.assertEquals(main_article.related.count(), 7)
+        self.assertEqual(main_article.related.count(), 7)
         unrelated = []
         for _ in range(5):
             unrelated.append(self.create_article())
@@ -384,8 +380,8 @@ class TestRelatedArticlesPlugin(TestPluginLanguageHelperMixin,
             self.assertNotContains(response, article.title)
 
     def test_latest_articles_plugin_language(self):
-        main_article, related_article = [
-            self.create_article() for _ in range(2)]
+        main_article, related_article = (
+            self.create_article() for _ in range(2))
         main_article.related.add(related_article)
         self._test_plugin_languages_with_article(related_article)
 
@@ -408,6 +404,6 @@ class TestTagsPlugin(TestAppConfigPluginsBase):
         time.sleep(1)
 
         response = self.client.get(self.plugin_page.get_absolute_url())
-        response_content = force_text(response.content)
-        self.assertRegexpMatches(response_content, 'tag1\s*<span[^>]*>3</span>')  # noqa: #W605
-        self.assertRegexpMatches(response_content, 'tag2\s*<span[^>]*>5</span>')  # noqa: #W605
+        response_content = force_str(response.content)
+        self.assertRegex(response_content, r'tag1\s*<span[^>]*>3</span>')  # noqa: #W605
+        self.assertRegex(response_content, r'tag2\s*<span[^>]*>5</span>')  # noqa: #W605

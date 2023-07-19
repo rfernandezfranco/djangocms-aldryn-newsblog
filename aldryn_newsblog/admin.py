@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from django.contrib import admin
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from cms.admin.placeholderadmin import (
     FrontendEditableAdminMixin, PlaceholderAdminMixin,
@@ -73,7 +70,7 @@ class ArticleAdminForm(TranslatableModelForm):
         ]
 
     def __init__(self, *args, **kwargs):
-        super(ArticleAdminForm, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         qs = models.Article.objects
         if self.instance.app_config_id:
@@ -177,7 +174,7 @@ class ArticleAdmin(
 
         data['owner'] = request.user.pk
         request.GET = data
-        return super(ArticleAdmin, self).add_view(request, *args, **kwargs)
+        return super().add_view(request, *args, **kwargs)
 
 
 class SerialAdmin(admin.ModelAdmin):
@@ -191,7 +188,8 @@ class SerialAdmin(admin.ModelAdmin):
     def change_view(self, request, object_id, form_url='', extra_context=None):
         if extra_context is None:
             extra_context = {}
-        extra_context['serial_episodes'] = models.Article.objects.filter(serial_id=object_id).order_by('article__episode', 'article__pk')
+        extra_context['serial_episodes'] = models.Article.objects.filter(serial_id=object_id).order_by(
+            'article__episode', 'article__pk')
         return self.changeform_view(request, object_id, form_url, extra_context)
 
 

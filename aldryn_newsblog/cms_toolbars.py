@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from django.core.exceptions import ImproperlyConfigured
 from django.urls import reverse
-from django.utils.translation import get_language_from_request, override
-from django.utils.translation import ugettext as _
+from django.utils.translation import get_language_from_request
+from django.utils.translation import gettext as _
+from django.utils.translation import override
 
 from cms.toolbar_base import CMSToolbar
 from cms.toolbar_pool import toolbar_pool
@@ -29,7 +26,7 @@ class NewsBlogToolbar(CMSToolbar):
     def get_on_delete_redirect_url(self, article, language):
         with override(language):
             url = reverse(
-                '{0}:article-list'.format(article.app_config.namespace))
+                f'{article.app_config.namespace}:article-list')
         return url
 
     def __get_newsblog_config(self):
@@ -60,7 +57,7 @@ class NewsBlogToolbar(CMSToolbar):
             language = get_language_from_request(self.request, check_path=True)
 
             # If we're on an Article detail page, then get the article
-            if view_name == '{0}:article-detail'.format(config.namespace):
+            if view_name == f'{config.namespace}:article-detail':
                 article = get_object_from_request(Article, self.request)
             else:
                 article = None

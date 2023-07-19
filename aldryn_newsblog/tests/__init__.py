@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 import os
 import random
 import string
@@ -35,7 +31,7 @@ TESTS_ROOT = os.path.abspath(os.path.dirname(__file__))
 TESTS_STATIC_ROOT = os.path.abspath(os.path.join(TESTS_ROOT, 'static'))
 
 
-class NewsBlogTestsMixin(object):
+class NewsBlogTestsMixin:
 
     NO_REDIRECT_CMS_SETTINGS = {
         1: [
@@ -76,8 +72,8 @@ class NewsBlogTestsMixin(object):
         return node.__class__.objects.get(id=node.id)
 
     @classmethod
-    def rand_str(cls, prefix=u'', length=23, chars=string.ascii_letters):
-        return prefix + u''.join(random.choice(chars) for _ in range(length))
+    def rand_str(cls, prefix='', length=23, chars=string.ascii_letters):
+        return prefix + ''.join(random.choice(chars) for _ in range(length))
 
     @classmethod
     def create_user(cls, **kwargs):
@@ -146,7 +142,7 @@ class NewsBlogTestsMixin(object):
         categories = []
         # Set the default language, create the objects
         with override(self.language):
-            code = "{0}-".format(self.language)
+            code = f"{self.language}-"
             self.category_root = Category.add_root(
                 name=self.rand_str(prefix=code, length=8))
             categories.append(self.category_root)
@@ -164,7 +160,7 @@ class NewsBlogTestsMixin(object):
         for language, _ in settings.LANGUAGES[1:]:
             for category in categories:
                 with switch_language(category, language):
-                    code = "{0}-".format(language)
+                    code = f"{language}-"
                     category.name = self.rand_str(prefix=code, length=8)
                     category.save()
 
@@ -222,11 +218,11 @@ class NewsBlogTestsMixin(object):
                 page.publish(language)
 
 
-class CleanUpMixin(object):
+class CleanUpMixin:
     apphook_object = None
 
     def setUp(self):
-        super(CleanUpMixin, self).setUp()
+        super().setUp()
         apphook_object = self.get_apphook_object()
         self.reload_urls(apphook_object)
 
@@ -239,7 +235,7 @@ class CleanUpMixin(object):
         self.app_config.delete()
         self.reset_all()
         cache.clear()
-        super(CleanUpMixin, self).tearDown()
+        super().tearDown()
 
     def get_apphook_object(self):
         return self.apphook_object
@@ -314,7 +310,7 @@ class CleanUpMixin(object):
         clear_url_caches()
         url_modules = [
             'cms.urls',
-            '{0}.urls'.format(package),
+            f'{package}.urls',
             settings.ROOT_URLCONF
         ]
 

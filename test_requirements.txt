@@ -1,24 +1,20 @@
-#aldryn-apphooks-config
-https://github.com/vThaian/aldryn-apphooks-config/archive/fixes-for-django-20-and-up.zip
-
-aldryn-categories
-aldryn-people
+djangocms-aldryn-categories
+djangocms-aldryn-people
 django-haystack
-aldryn-boilerplates
 django-taggit
 
 # NOTE: These are for Filer
 django-mptt
 django_polymorphic
 
-aldryn-search>=0.2.12
+djangocms-aldryn-search
 coverage>=3.7.1
 dj-database-url
 django-classy-tags
 django-sekizai
 django-treebeard>=2.0
 djangocms-admin-style
-djangocms-helper
+djangocms-helper @ git+https://github.com/nephila/django-app-helper.git@3.3.1
 djangocms-text-ckeditor
 docopt
 flake8
@@ -26,6 +22,9 @@ tox>=2.9.1
 pyflakes
 selenium
 python-dateutil
+pytz
+reportlab
+svglib
 
 # docs
 sphinx

@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from django import forms
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from cms.api import add_plugin
 from cms.utils import permissions
@@ -80,7 +76,7 @@ class CreateNewsBlogArticleForm(BaseFormMixin, TranslatableModelForm):
         widgets = {'app_config': forms.Select()}
 
     def __init__(self, **kwargs):
-        super(CreateNewsBlogArticleForm, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         # If there's only 1 (or zero) app_configs, don't bother show the
         # app_config choice field, we'll choose the option for the user.
@@ -90,7 +86,7 @@ class CreateNewsBlogArticleForm(BaseFormMixin, TranslatableModelForm):
             self.fields['app_config'].initial = app_configs[0].pk
 
     def save(self, commit=True):
-        article = super(CreateNewsBlogArticleForm, self).save(commit=False)
+        article = super().save(commit=False)
         article.owner = self.user
         article.save()
 
@@ -108,10 +104,10 @@ class CreateNewsBlogArticleForm(BaseFormMixin, TranslatableModelForm):
 
 
 newsblog_article_wizard = NewsBlogArticleWizard(
-    title=_(u"New news/blog article"),
+    title=_("New news/blog article"),
     weight=200,
     form=CreateNewsBlogArticleForm,
-    description=_(u"Create a new news/blog article.")
+    description=_("Create a new news/blog article.")
 )
 
 wizard_pool.register(newsblog_article_wizard)

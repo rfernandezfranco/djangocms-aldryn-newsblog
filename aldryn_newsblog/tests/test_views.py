@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 import os
 from datetime import date, datetime
 from operator import itemgetter
@@ -32,18 +28,18 @@ FEATURED_IMAGE_PATH = os.path.join(TESTS_STATIC_ROOT, 'featured_image.jpg')
 PARLER_LANGUAGES_HIDE = {
     1: [
         {
-            'code': u'en',
-            'fallbacks': [u'de'],
+            'code': 'en',
+            'fallbacks': ['de'],
             'hide_untranslated': True
         },
         {
-            'code': u'de',
-            'fallbacks': [u'en'],
+            'code': 'de',
+            'fallbacks': ['en'],
             'hide_untranslated': True
         },
         {
-            'code': u'fr',
-            'fallbacks': [u'en'],
+            'code': 'fr',
+            'fallbacks': ['en'],
             'hide_untranslated': True
         },
     ],
@@ -56,18 +52,18 @@ PARLER_LANGUAGES_HIDE = {
 PARLER_LANGUAGES_SHOW = {
     1: [
         {
-            'code': u'en',
-            'fallbacks': [u'de'],
+            'code': 'en',
+            'fallbacks': ['de'],
             'hide_untranslated': False
         },
         {
-            'code': u'de',
-            'fallbacks': [u'en'],
+            'code': 'de',
+            'fallbacks': ['en'],
             'hide_untranslated': False
         },
         {
-            'code': u'fr',
-            'fallbacks': [u'en'],
+            'code': 'fr',
+            'fallbacks': ['en'],
             'hide_untranslated': False
         },
     ],
@@ -87,7 +83,7 @@ class TestViews(NewsBlogTestCase):
         unpublished_article.is_published = False
         unpublished_article.save()
         response = self.client.get(
-            reverse('{0}:article-list'.format(namespace)))
+            reverse(f'{namespace}:article-list'))
         for article in articles[1:]:
             self.assertContains(response, article.title)
         self.assertNotContains(response, unpublished_article.title)
@@ -111,7 +107,7 @@ class TestViews(NewsBlogTestCase):
         articles.reverse()
         featured_articles.reverse()
         # prepare urls
-        list_base_url = reverse('{0}:article-list'.format(namespace))
+        list_base_url = reverse(f'{namespace}:article-list')
         page_url_template = '{0}?page={1}'
         response_page_1 = self.client.get(list_base_url)
         response_page_2 = self.client.get(
@@ -142,14 +138,14 @@ class TestViews(NewsBlogTestCase):
         ) for i in range(paginate_by + 5)]
 
         response = self.client.get(
-            reverse('{0}:article-list'.format(namespace)))
+            reverse(f'{namespace}:article-list'))
         for article in articles[:paginate_by]:
             self.assertContains(response, article.title)
         for article in articles[paginate_by:]:
             self.assertNotContains(response, article.title)
 
         response = self.client.get(
-            reverse('{0}:article-list'.format(namespace)) + '?page=2')
+            reverse(f'{namespace}:article-list') + '?page=2')
         for article in articles[:paginate_by]:
             self.assertNotContains(response, article.title)
         for article in articles[paginate_by:]:
@@ -182,7 +178,7 @@ class TestViews(NewsBlogTestCase):
             author = self.create_person()
             for category in (self.category1, self.category2):
                 articles = []
-                code = "{0}-".format(self.language)
+                code = f"{self.language}-"
                 for _ in range(11):
                     article = Article.objects.create(
                         title=self.rand_str(),
@@ -197,7 +193,7 @@ class TestViews(NewsBlogTestCase):
                     # articles.
                     for language, _ in settings.LANGUAGES[1:]:
                         with switch_language(article, language):
-                            code = "{0}-".format(language)
+                            code = f"{language}-"
                             article.title = self.rand_str(prefix=code)
                             article.save()
 
@@ -228,14 +224,14 @@ class TestViews(NewsBlogTestCase):
 class TestTemplatePrefixes(NewsBlogTestCase):
 
     def setUp(self):
-        super(TestTemplatePrefixes, self).setUp()
+        super().setUp()
         self.app_config.template_prefix = 'dummy'
         self.app_config.save()
 
     def test_articles_list(self):
         namespace = self.app_config.namespace
         response = self.client.get(
-            reverse('{0}:article-list'.format(namespace)))
+            reverse(f'{namespace}:article-list'))
         self.assertContains(response, 'This is dummy article list page')
 
     def test_article_detail(self):
@@ -243,7 +239,7 @@ class TestTemplatePrefixes(NewsBlogTestCase):
         namespace = self.app_config.namespace
         response = self.client.get(
             reverse(
-                '{0}:article-detail'.format(namespace),
+                f'{namespace}:article-detail',
                 kwargs={'slug': article.slug}
             ))
         self.assertContains(response, 'This is dummy article detail page')
@@ -256,7 +252,7 @@ class TestTranslationFallbacks(NewsBlogTestCase):
         (configured) language
         """
         author = self.create_person()
-        code = "{0}-".format(self.language)
+        code = f"{self.language}-"
 
         with override(settings.LANGUAGES[0][0]):
             article = Article.objects.create(
@@ -286,9 +282,9 @@ class TestTranslationFallbacks(NewsBlogTestCase):
                     'aldryn_newsblog:article-detail',
                     kwargs={'slug': slug}
                 )
-                self.assertNotEquals(url, url_one)
+                self.assertNotEqual(url, url_one)
                 response = self.client.get(url)
-                self.assertEquals(response.status_code, 404)
+                self.assertEqual(response.status_code, 404)
 
             # Test again with redirect_on_fallback = False
             with self.settings(CMS_LANGUAGES=self.NO_REDIRECT_CMS_SETTINGS):
@@ -299,9 +295,9 @@ class TestTranslationFallbacks(NewsBlogTestCase):
                         'aldryn_newsblog:article-detail',
                         kwargs={'slug': slug, }
                     )
-                    self.assertNotEquals(url, url_one)
+                    self.assertNotEqual(url, url_one)
                     response = self.client.get(url)
-                    self.assertEquals(response.status_code, 404)
+                    self.assertEqual(response.status_code, 404)
 
     def test_article_detail_not_translated_no_fallback(self):
         """
@@ -309,7 +305,7 @@ class TestTranslationFallbacks(NewsBlogTestCase):
         language in which is translated
         """
         author = self.create_person()
-        code = "{0}-".format(self.language)
+        code = f"{self.language}-"
         article = Article.objects.create(
             title=self.rand_str(), slug=self.rand_str(prefix=code),
             app_config=self.app_config,
@@ -419,7 +415,7 @@ class TestVariousViews(NewsBlogTestCase):
         article.save()
         months[-1]['num_articles'] -= 1
 
-        self.assertEquals(
+        self.assertEqual(
             sorted(
                 Article.objects.get_months(
                     request=None, namespace=self.app_config.namespace
@@ -443,7 +439,7 @@ class TestVariousViews(NewsBlogTestCase):
         article.save()
         authors[-1] = (authors[-1][0], authors[-1][1] - 1)
 
-        self.assertEquals(
+        self.assertEqual(
             sorted(
                 Article.objects.get_authors(
                     namespace=self.app_config.namespace).values_list(
@@ -454,7 +450,7 @@ class TestVariousViews(NewsBlogTestCase):
     def test_articles_count_by_tags(self):
         tags = Article.objects.get_tags(
             request=None, namespace=self.app_config.namespace)
-        self.assertEquals(tags, [])
+        self.assertEqual(tags, [])
 
         untagged_articles = []
         for _ in range(5):
@@ -478,7 +474,7 @@ class TestVariousViews(NewsBlogTestCase):
         tags = Article.objects.get_tags(
             request=None, namespace=self.app_config.namespace)
         tags = [(tag.slug, tag.num_articles) for tag in tags]
-        self.assertEquals(tags, tags_expected)
+        self.assertEqual(tags, tags_expected)
 
     def test_articles_by_date(self):
         in_articles = [
@@ -581,17 +577,17 @@ class TestIndex(NewsBlogTestCase):
         self.setup_categories()
 
         article_1 = self.create_article(
-            content=content0, lead_in=u'lead in text', title=u'a title')
+            content=content0, lead_in='lead in text', title='a title')
         article_2 = self.create_article(
-            content=content0, lead_in=u'lead in text', title=u'second title')
+            content=content0, lead_in='lead in text', title='second title')
         for article in (article_1, article_2):
             for tag_name in ('tag 1', 'tag2'):
                 article.tags.add(tag_name)
             for category in (self.category1, self.category2):
                 article.categories.add(category)
         with switch_language(article_2, 'de'):
-            article_2.title = u'de title'
-            article_2.lead_in = u'de lead in'
+            article_2.title = 'de title'
+            article_2.lead_in = 'de lead in'
             article_2.save()
 
         LANGUAGES = add_default_language_settings(PARLER_LANGUAGES_HIDE)
@@ -613,7 +609,7 @@ class TestIndex(NewsBlogTestCase):
                         self.index.get_description(article_de), 'de lead in')
 
 
-class ViewLanguageFallbackMixin(object):
+class ViewLanguageFallbackMixin:
     view_name = None
     view_kwargs = {}
 
@@ -682,7 +678,7 @@ class ViewLanguageFallbackMixin(object):
         self.page.unpublish('de')
         author, owner = self.create_authors()
         author.translations.create(
-            slug='{0}-de'.format(author.slug),
+            slug=f'{author.slug}-de',
             language_code='de')
         de_article = self.create_de_article(
             author=author,
@@ -693,7 +689,7 @@ class ViewLanguageFallbackMixin(object):
         with force_language('en'):
             response = self.client.get(
                 reverse(
-                    '{0}:{1}'.format(namespace, self.view_name),
+                    f'{namespace}:{self.view_name}',
                     kwargs=self.get_view_kwargs()
                 )
             )
@@ -705,7 +701,7 @@ class ViewLanguageFallbackMixin(object):
         namespace = self.app_config.namespace
         author, owner = self.create_authors()
         author.translations.create(
-            slug='{0}-de'.format(author.slug),
+            slug=f'{author.slug}-de',
             language_code='de')
         de_article = self.create_de_article(
             author=author,
@@ -716,7 +712,7 @@ class ViewLanguageFallbackMixin(object):
         with force_language('en'):
             response = self.client.get(
                 reverse(
-                    '{0}:{1}'.format(namespace, self.view_name),
+                    f'{namespace}:{self.view_name}',
                     kwargs=self.get_view_kwargs()
                 )
             )

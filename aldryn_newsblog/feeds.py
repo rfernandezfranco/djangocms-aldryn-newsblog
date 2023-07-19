@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-
 from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
 from django.contrib.syndication.views import Feed
 from django.urls import reverse
 from django.utils.translation import get_language_from_request
-from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 
 from aldryn_apphooks_config.utils import get_app_instance
 from aldryn_categories.models import Category
@@ -24,11 +22,11 @@ class LatestArticlesFeed(Feed):
             self.namespace,
             language_code=language,
             site_id=site_id)
-        return super(LatestArticlesFeed, self).__call__(
+        return super().__call__(
             request, *args, **kwargs)
 
     def link(self):
-        return reverse('{0}:article-list-feed'.format(self.namespace))
+        return reverse(f'{self.namespace}:article-list-feed')
 
     def title(self):
         msgformat = {'site_name': Site.objects.get_current().name}

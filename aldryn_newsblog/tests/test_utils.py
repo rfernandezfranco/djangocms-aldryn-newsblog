@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from unittest import TestCase
 
 from django.urls import NoReverseMatch, reverse
@@ -65,10 +61,10 @@ class TestAddPrefixToPath(TestCase):
 
         for default in defaults:
             try:
-                self.assertEquals(
+                self.assertEqual(
                     default_reverse(non_pattern, default=default),
                     default
                 )
             except:  # noqa: E722
                 self.fail('default_reverse raised exception even though we '
-                          'set a default value of: {0}.'.format(default))
+                          'set a default value of: {}.'.format(default))

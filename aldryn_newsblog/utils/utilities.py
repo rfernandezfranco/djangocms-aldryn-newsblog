@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sites.models import Site
@@ -10,7 +6,7 @@ from django.db import models
 from django.test import RequestFactory
 from django.urls import NoReverseMatch, reverse
 from django.utils import translation
-from django.utils.encoding import force_text
+from django.utils.encoding import force_str
 from django.utils.html import strip_tags as _strip_tags
 from django.utils.text import smart_split
 
@@ -73,7 +69,7 @@ def strip_tags(value):
 
 
 def get_cleaned_bits(data):
-    decoded = force_text(data)
+    decoded = force_str(data)
     stripped = strip_tags(decoded)
     return smart_split(stripped)
 
@@ -151,9 +147,9 @@ def add_prefix_to_path(path, prefix):
     if len(splitted_path) == 1:
         # template is not in directory
         # template.html => prefix/template.html
-        return "{0}/{1}".format(prefix, splitted_path[0])
+        return f"{prefix}/{splitted_path[0]}"
     # directory/template.html => directory/prefix/template.html
-    return "{0}/{1}/{2}".format(splitted_path[0], prefix, splitted_path[1])
+    return f"{splitted_path[0]}/{prefix}/{splitted_path[1]}"
 
 
 def is_valid_namespace(namespace):
@@ -162,7 +158,7 @@ def is_valid_namespace(namespace):
     Returns True or False.
     """
     try:
-        reverse('{0}:article-list'.format(namespace))
+        reverse(f'{namespace}:article-list')
     except NoReverseMatch:
         return False
     return True

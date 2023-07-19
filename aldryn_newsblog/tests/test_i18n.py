@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from django.urls import NoReverseMatch
 from django.utils.translation import override
 
@@ -23,20 +19,20 @@ class TestI18N(NewsBlogTestCase):
         # Reload for good measure
         article = self.reload(article)
 
-        self.assertEquals(article.get_absolute_url(language='en'),
+        self.assertEqual(article.get_absolute_url(language='en'),
             '/en/page/god-save-queen/')
         # Test that we can request the other defined language too
-        self.assertEquals(article.get_absolute_url(language='de'),
+        self.assertEqual(article.get_absolute_url(language='de'),
             '/de/page/einigkeit-und-recht-und-freiheit/')
 
         # Now, let's request a language that article has not yet been translated
         # to, but has fallbacks defined, we should get EN
-        self.assertEquals(article.get_absolute_url(language='fr'),
+        self.assertEqual(article.get_absolute_url(language='fr'),
             '/en/page/god-save-queen/')
 
         # With settings changed to 'redirect_on_fallback': False, test again.
         with self.settings(CMS_LANGUAGES=self.NO_REDIRECT_CMS_SETTINGS):
-            self.assertEquals(article.get_absolute_url(language='fr'),
+            self.assertEqual(article.get_absolute_url(language='fr'),
                 '/fr/page/god-save-queen/')
 
         # Now, let's request a language that has a fallback defined, but it is

@@ -1,16 +1,10 @@
-**Deprecated**
+|Project continuation| |Pypi package| |Pypi status| |Python versions| |License|
 
-This project is no longer supported.
 
-Divio will undertake no further development or maintenance of this project. If you are interested in continuing to develop it, use the fork functionality from GitHub. We are not able to transfer ownership of the repository to another party.
-
-Please have a look at alternatives such as `djangocms-blog <https://github.com/nephila/djangocms-blog>`_.
-
-#################################
 Aldryn News & Blog for django CMS
-#################################
+=================================
 
-|PyPI Version| |Build Status| |Coverage Status| |codeclimate| |requires_io|
+Continuation of the deprecated project `Divio Aldryn search <https://github.com/divio/aldryn-newsblog>`_.
 
 Aldryn News & Blog is an `Aldryn <http://aldryn.com>`_-compatible news and
 weblog application for `django CMS <http://django-cms.org>`_.
@@ -55,15 +49,18 @@ Contributors are listed at the `contributors <https://github.com/divio/aldryn-ne
 section.
 
 
-.. |PyPI Version| image:: http://img.shields.io/pypi/v/aldryn-newsblog.svg
-   :target: https://pypi.python.org/pypi/aldryn-newsblog
-.. |Build Status| image:: http://img.shields.io/travis/aldryn/aldryn-newsblog/master.svg
-   :target: https://travis-ci.org/aldryn/aldryn-newsblog
-.. |Coverage Status| image:: http://img.shields.io/coveralls/aldryn/aldryn-newsblog/master.svg
-   :target: https://coveralls.io/r/aldryn/aldryn-newsblog?branch=master
-.. |codeclimate| image:: https://codeclimate.com/github/aldryn/aldryn-newsblog/badges/gpa.svg
-   :target: https://codeclimate.com/github/aldryn/aldryn-newsblog
-   :alt: Code Climate
-.. |requires_io| image:: https://requires.io/github/aldryn/aldryn-newsblog/requirements.svg?branch=master
-   :target: https://requires.io/github/aldryn/aldryn-newsblog/requirements/?branch=master
-   :alt: Requirements Status
+.. |Project continuation| image:: https://img.shields.io/badge/Continuation-Divio_Aldryn_Search-blue
+    :target: https://github.com/CZ-NIC/djangocms-aldryn-newsblog
+    :alt: Continuation of the deprecated project "Divio Aldryn News&Blog"
+.. |Pypi package| image:: https://img.shields.io/pypi/v/djangocms-aldryn-newsblog.svg
+    :target: https://pypi.python.org/pypi/djangocms-aldryn-newsblog/
+    :alt: Pypi package
+.. |Pypi status| image:: https://img.shields.io/pypi/status/djangocms-aldryn-newsblog.svg
+   :target: https://pypi.python.org/pypi/djangocms-aldryn-newsblog
+   :alt: status
+.. |Python versions| image:: https://img.shields.io/pypi/pyversions/djangocms-aldryn-newsblog.svg
+   :target: https://pypi.python.org/pypi/djangocms-aldryn-newsblog
+   :alt: Python versions
+.. |License| image:: https://img.shields.io/pypi/l/djangocms-aldryn-newsblog.svg
+    :target: https://pypi.python.org/pypi/djangocms-aldryn-newsblog/
+    :alt: license

@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 import datetime
 from collections import Counter
 from operator import attrgetter
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.timezone import now
 
@@ -102,14 +99,13 @@ class RelatedManager(ManagerMixin, TranslatableManager):
         if not articles:
             # return empty iterable early not to perform useless requests
             return []
-        kwargs = TaggedItem.bulk_lookup_kwargs(articles)
 
         # aggregate and sort
-        counted_tags = dict(TaggedItem.objects
-                            .filter(**kwargs)
-                            .values('tag')
-                            .annotate(tag_count=models.Count('tag'))
-                            .values_list('tag', 'tag_count'))
+        counted_tags = dict(
+            TaggedItem.objects.filter(
+                content_type=ContentType.objects.get_for_model(type(articles[0])),
+                object_id__in=[obj.pk for obj in articles]
+            ).values('tag').annotate(tag_count=models.Count('tag')).values_list('tag', 'tag_count'))
 
         # and finally get the results
         tags = Tag.objects.filter(pk__in=counted_tags.keys())

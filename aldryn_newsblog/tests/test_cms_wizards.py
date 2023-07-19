@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from aldryn_newsblog.cms_wizards import CreateNewsBlogArticleForm
 from aldryn_newsblog.tests import NewsBlogTestCase
 
@@ -21,10 +18,10 @@ class CreateNewsBlogArticleFormTestCase(NewsBlogTestCase):
 
         article = form.save()
         self.assertTrue(article.__class__.objects.filter(id=article.id).exists())
-        self.assertEquals(article.content.get_plugins('en').count(), 1)
+        self.assertEqual(article.content.get_plugins('en').count(), 1)
         plugin = article.content.get_plugins('en').get()
-        self.assertEquals(plugin.plugin_type, 'TextPlugin')
-        self.assertEquals(plugin.djangocms_text_ckeditor_text.body, 'My super content')
+        self.assertEqual(plugin.plugin_type, 'TextPlugin')
+        self.assertEqual(plugin.djangocms_text_ckeditor_text.body, 'My super content')
 
     def test_article_is_saved_without_content_with_plugin_permission(self):
         form = self.get_form(has_content=False, has_permission=True)

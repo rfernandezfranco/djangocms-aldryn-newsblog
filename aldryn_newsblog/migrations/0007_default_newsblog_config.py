@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from django.apps import apps as django_apps
 from django.conf import settings
 from django.db import migrations, models, transaction
@@ -55,7 +52,7 @@ def create_default_newsblog_config(apps, schema_editor):
             # skip other fields.
             continue
         placeholder_name = field.name
-        placeholder_id_name = '{0}_id'.format(placeholder_name)
+        placeholder_id_name = f'{placeholder_name}_id'
         placeholder_id = getattr(app_config, placeholder_id_name, None)
         if placeholder_id is not None:
             # do not process if it has a reference to placeholder field.

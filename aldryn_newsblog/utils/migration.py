@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
-
 #
 # If new plugins are added, they should be added to this list.
 #
@@ -44,10 +39,10 @@ def rename_tables(db, table_mapping=None, reverse=False):
     table_names = connection.introspection.table_names()
     for source, destination in table_mapping:
         if source in table_names and destination in table_names:
-            print("    WARNING: not renaming {0} to {1}, because both tables "
+            print("    WARNING: not renaming {} to {}, because both tables "
                   "already exist.".format(source, destination))
         elif source in table_names and destination not in table_names:
-            print("     - renaming {0} to {1}".format(source, destination))
+            print(f"     - renaming {source} to {destination}")
             db.rename_table(source, destination)
 
 

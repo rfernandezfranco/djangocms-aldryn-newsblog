@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils.translation import override
 
@@ -40,7 +36,7 @@ class TestSitemaps(NewsBlogTestCase):
         self.request = self.get_request(lang)
         urls = self._sitemap_urls(sitemap)
         host = 'http://' + get_current_site(self.request).domain
-        url_start = "{0}/{1}".format(host, lang)
+        url_start = f"{host}/{lang}"
 
         for url in urls:
             self.assertTrue(url.startswith(url_start))

@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import unicode_literals
-
 from django.test import TransactionTestCase
 
 from aldryn_people.models import Person
@@ -28,7 +24,7 @@ class AdminTest(NewsBlogTestsMixin, TransactionTestCase):
         user.is_superuser = True
         user.save()
 
-        Person.objects.create(user=user, name=u' '.join(
+        Person.objects.create(user=user, name=' '.join(
             (user.first_name, user.last_name)))
 
         admin_inst = admin.site._registry[Article]
@@ -39,5 +35,5 @@ class AdminTest(NewsBlogTestsMixin, TransactionTestCase):
         option = r'<option value="{}" (selected="selected"|selected)>%s<\/option>'.format(
             user.pk,
         )
-        self.assertRegexpMatches(response.rendered_content, option % user.username)
-        self.assertRegexpMatches(response.rendered_content, option % user.get_full_name())
+        self.assertRegex(response.rendered_content, option % user.username)
+        self.assertRegex(response.rendered_content, option % user.get_full_name())

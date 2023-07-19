@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from django.utils.translation import activate
 
 from aldryn_newsblog.search_indexes import ArticleIndex
@@ -50,8 +49,8 @@ class ArticleIndexingTests(NewsBlogTestCase):
 
         data = index.prepare(article)
 
-        self.assertEquals(data['language'], 'de')
-        self.assertEquals(data['url'], article.get_absolute_url('de'))
+        self.assertEqual(data['language'], 'de')
+        self.assertEqual(data['url'], article.get_absolute_url('de'))
 
     def test_article_not_indexed_if_no_translation(self):
         index = self.get_index()
@@ -60,11 +59,11 @@ class ArticleIndexingTests(NewsBlogTestCase):
 
         # should the index be updated for this object? (yes)
         should_update = index.should_update(article)
-        self.assertEquals(should_update, True)
+        self.assertEqual(should_update, True)
 
         # remove all translations for article
         article.translations.all().delete()
 
         # should the index be updated for this object? (no)
         should_update = index.should_update(article)
-        self.assertEquals(should_update, False)
+        self.assertEqual(should_update, False)
