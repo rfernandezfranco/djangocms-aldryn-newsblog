@@ -2,8 +2,10 @@ Changelog
 =========
 
 
-Unreleased
-==========
+3.1.0 (2023-08-22)
+==================
+
+* Add css class names djangocms-newsblog-content, djangocms-newsblog-article-list, articles-list-item, article-detail, etc.
 
 3.0.0 (2023-07-24)
 ==================
