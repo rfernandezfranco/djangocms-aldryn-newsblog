@@ -1,6 +1,10 @@
 Changelog
 =========
 
+3.1.1 (2023-09-07)
+==================
+
+* Fix content of NewsBlogSerialEpisodesPlugin.
 
 3.1.0 (2023-08-22)
 ==================

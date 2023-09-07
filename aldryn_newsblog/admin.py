@@ -188,8 +188,7 @@ class SerialAdmin(admin.ModelAdmin):
     def change_view(self, request, object_id, form_url='', extra_context=None):
         if extra_context is None:
             extra_context = {}
-        extra_context['serial_episodes'] = models.Article.objects.filter(serial_id=object_id).order_by(
-            'article__episode', 'article__pk')
+        extra_context['serial_episodes'] = models.Article.objects.filter(serial_id=object_id).order_by('episode')
         return self.changeform_view(request, object_id, form_url, extra_context)
 
 
