@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Unreleased
+==========
+
+3.1.2 (2023-09-27)
+==================
+
+* Fix requirements - add djangocms-aldryn-search, django-haystack.
+
 3.1.1 (2023-09-07)
 ==================
 
