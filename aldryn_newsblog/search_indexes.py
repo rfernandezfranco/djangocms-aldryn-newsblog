@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.urls.exceptions import NoReverseMatch
 
 from aldryn_search.utils import get_index_base
 from haystack.constants import DEFAULT_ALIAS
@@ -21,7 +22,10 @@ class ArticleIndex(get_index_base()):
     def get_url(self, obj):
         using = getattr(self, '_backend_alias', DEFAULT_ALIAS)
         language = self.get_current_language(using=using, obj=obj)
-        return obj.get_absolute_url(language)
+        try:
+            return obj.get_absolute_url(language)
+        except NoReverseMatch:  # This occurs when Aldryn News Section is not published on the site.
+            return None
 
     def get_description(self, obj):
         return obj.lead_in

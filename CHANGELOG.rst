@@ -4,6 +4,8 @@ Changelog
 Unreleased
 ==========
 
+* Fix NoReverseMatch when 'aldryn_newsblog_default' is not a registered namespace.
+
 3.1.2 (2023-09-27)
 ==================
 
