@@ -1,4 +1,7 @@
+from typing import Optional
+
 from django.contrib import admin
+from django.urls.exceptions import NoReverseMatch
 from django.utils.translation import gettext_lazy as _
 
 from cms.admin.placeholderadmin import (
@@ -175,6 +178,16 @@ class ArticleAdmin(
         data['owner'] = request.user.pk
         request.GET = data
         return super().add_view(request, *args, **kwargs)
+
+    def get_view_on_site_url(self, obj=None) -> Optional[str]:
+        if obj is not None:
+            try:
+                obj.get_absolute_url()
+            except NoReverseMatch:
+                # This occurs when Aldryn News section is not published on the site.
+                # 'aldryn_newsblog_default' is not a registered namespace
+                return None
+        return super().get_view_on_site_url(obj)
 
 
 class SerialAdmin(admin.ModelAdmin):

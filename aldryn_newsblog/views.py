@@ -5,7 +5,6 @@ from django.http import (
     Http404, HttpResponsePermanentRedirect, HttpResponseRedirect,
 )
 from django.shortcuts import get_object_or_404
-from django.urls.exceptions import NoReverseMatch
 from django.utils import translation
 from django.views.generic import ListView
 from django.views.generic.detail import DetailView
@@ -110,10 +109,7 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
         if not hasattr(self, 'object'):
             self.object = self.get_object()
         set_language_changer(request, self.object.get_absolute_url)
-        try:
-            url = self.object.get_absolute_url()
-        except NoReverseMatch as err:  # This occurs when Aldryn News section is not published on the site.
-            raise Http404(err)  # 'aldryn_newsblog_default' is not a registered namespace
+        url = self.object.get_absolute_url()
         if self.config.non_permalink_handling == 200 or request.path == url:
             # Continue as normal
             return super().get(request, *args, **kwargs)
