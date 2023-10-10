@@ -1,6 +1,6 @@
 {% load i18n static thumbnail apphooks_config_tags %}
 
-{% if author %}
+{% if author and not aldryn_newsblog_hide_author %}
     <p>
         <a href="{% namespace_url "article-list-by-author" author.slug namespace=namespace default='' %}">
             {% if author.visual %}
