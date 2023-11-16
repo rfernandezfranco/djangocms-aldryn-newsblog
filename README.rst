@@ -4,7 +4,7 @@
 Aldryn News & Blog for django CMS
 =================================
 
-Continuation of the deprecated project `Divio Aldryn search <https://github.com/divio/aldryn-newsblog>`_.
+Continuation of the deprecated project `Divio Aldryn News&Blog <https://github.com/divio/aldryn-newsblog>`_.
 
 Aldryn News & Blog is an `Aldryn <http://aldryn.com>`_-compatible news and
 weblog application for `django CMS <http://django-cms.org>`_.
@@ -49,7 +49,7 @@ Contributors are listed at the `contributors <https://github.com/divio/aldryn-ne
 section.
 
 
-.. |Project continuation| image:: https://img.shields.io/badge/Continuation-Divio_Aldryn_Search-blue
+.. |Project continuation| image:: https://img.shields.io/badge/Continuation-Divio_Aldryn_News&Blog-blue
     :target: https://github.com/CZ-NIC/djangocms-aldryn-newsblog
     :alt: Continuation of the deprecated project "Divio Aldryn News&Blog"
 .. |Pypi package| image:: https://img.shields.io/pypi/v/djangocms-aldryn-newsblog.svg
