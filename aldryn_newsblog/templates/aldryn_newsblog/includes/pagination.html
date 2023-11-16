@@ -19,7 +19,7 @@
                 {% if num == page_obj.number %}
                     <li class="active"><span>{{ num }}</span></li>
                 {% elif num > page_obj.number|add:pagination.pages_visible_total_negative and num < page_obj.number|add:pagination.pages_visible_total %}
-                    <li class="active"><a href="?page={{ num }}">{{ num }}</a></li>
+                    <li><a href="?page={{ num }}">{{ num }}</a></li>
                 {% endif %}
             {% endfor %}
 

@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ==========
 
+3.1.6 (2023-11-16)
+==================
+
+* Fix another class active in template pagination.
+
 3.1.5 (2023-11-16)
 ==================
 
