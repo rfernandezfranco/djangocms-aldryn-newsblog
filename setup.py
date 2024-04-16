@@ -16,7 +16,7 @@ REQUIREMENTS = [
     'djangocms-text-ckeditor',
     'django-taggit',
     'python-dateutil',
-    'lxml',
+    'lxml[html_clean]',
 ]
 
 # https://pypi.python.org/pypi?%3Aaction=list_classifiers

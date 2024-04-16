@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ==========
 
+3.1.7 (2024-04-16)
+==================
+
+* Fix ImportError: lxml.html.clean module is now a separate project lxml_html_clean. Add lxml[html_clean] into requirements.
+
 3.1.6 (2023-11-16)
 ==================
 
