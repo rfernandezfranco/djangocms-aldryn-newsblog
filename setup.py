@@ -17,6 +17,7 @@ REQUIREMENTS = [
     'django-taggit',
     'python-dateutil',
     'lxml[html_clean]',
+    'looseversion',
 ]
 
 # https://pypi.python.org/pypi?%3Aaction=list_classifiers

@@ -3,11 +3,12 @@
 from __future__ import unicode_literals
 
 import os
-from distutils.version import LooseVersion
 
 from django import get_version
 
 from cms import __version__ as cms_string_version
+
+from looseversion import LooseVersion
 
 
 django_version = LooseVersion(get_version())
@@ -168,6 +169,7 @@ def boolean_ish(var):
 
 def run():
     from djangocms_helper import runner
+
     # --boilerplate option will ensure correct boilerplate settings are
     # added to settings
     runner.cms('aldryn_newsblog', extra_args=[])

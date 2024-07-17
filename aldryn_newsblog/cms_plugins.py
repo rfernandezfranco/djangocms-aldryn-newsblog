@@ -1,10 +1,10 @@
-from distutils.version import LooseVersion
-
 from django.utils.translation import gettext_lazy as _
 
 from cms import __version__ as cms_version
 from cms.plugin_base import CMSPluginBase
 from cms.plugin_pool import plugin_pool
+
+from looseversion import LooseVersion
 
 from . import forms, models
 from .utils import add_prefix_to_path, default_reverse

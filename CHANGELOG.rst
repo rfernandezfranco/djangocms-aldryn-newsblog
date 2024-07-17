@@ -4,6 +4,11 @@ Changelog
 Unreleased
 ==========
 
+3.1.8 (2024-07-17)
+==================
+
+* Fix for py312: Use LooseVersion from looseversion instead of distutils.
+
 3.1.7 (2024-04-16)
 ==================
 
