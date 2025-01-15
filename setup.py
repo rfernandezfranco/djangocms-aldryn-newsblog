@@ -16,7 +16,8 @@ REQUIREMENTS = [
     'djangocms-text-ckeditor',
     'django-taggit',
     'python-dateutil',
-    'lxml[html_clean]',
+    'lxml',
+    'lxml_html_clean',
     'looseversion',
 ]
 
