@@ -4,11 +4,13 @@ from aldryn_newsblog.feeds import CategoryFeed, LatestArticlesFeed, TagFeed
 from aldryn_newsblog.views import (
     ArticleDetail, ArticleList, ArticleSearchResultsList, AuthorArticleList,
     CategoryArticleList, DayArticleList, MonthArticleList, TagArticleList,
-    YearArticleList,
+    YearArticleList, LatestArticlePreview,
 )
 
 
 urlpatterns = [
+    re_path(r'^latest/preview/$', LatestArticlePreview.as_view(), name='article-latest-preview'),
+
     path('', ArticleList.as_view(), name='article-list'),
 
     path('feed/', LatestArticlesFeed(), name='article-list-feed'),

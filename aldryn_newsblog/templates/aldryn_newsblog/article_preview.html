@@ -1,0 +1,6 @@
+{% extends "aldryn_newsblog/base.html" %}
+{% load i18n cms_tags %}
+{# This html may need to be the html which you hooked + article_detail to let the output could be the same as the preview #}
+{% block base_content %}
+    {% include "aldryn_newsblog/includes/article.html" %}
+{% endblock %}

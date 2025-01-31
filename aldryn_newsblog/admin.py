@@ -1,18 +1,33 @@
 from typing import Optional
 
+from django import forms
 from django.contrib import admin
 from django.urls.exceptions import NoReverseMatch
+from django.contrib.sites.models import Site
+from django.contrib.sites.shortcuts import get_current_site
+from django.urls import reverse_lazy
+from django.utils import translation
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
-
-from cms.admin.placeholderadmin import (
-    FrontendEditableAdminMixin, PlaceholderAdminMixin,
-)
+from cms.admin.placeholderadmin import FrontendEditableAdminMixin
+from cms.api import add_plugin
+from cms.toolbar.utils import get_object_preview_url
+from cms.utils.i18n import get_current_language
+from cms.utils.urlutils import static_with_version
 
 from aldryn_apphooks_config.admin import BaseAppHookConfig, ModelAppHookConfig
 from aldryn_people.models import Person
 from aldryn_translation_tools.admin import AllTranslationsMixin
 from parler.admin import TranslatableAdmin
 from parler.forms import TranslatableModelForm
+
+from djangocms_text_ckeditor.cms_plugins import TextPlugin
+from redirects.models import Redirect
+try:
+    from awesome_slugify import Slugify
+except ModuleNotFoundError:
+    from slugify import Slugify
+unicodeSlugify = Slugify(translate=None)
 
 from . import models
 
@@ -50,6 +65,14 @@ make_not_featured.short_description = _(
 
 
 class ArticleAdminForm(TranslatableModelForm):
+    oldSlug = forms.CharField(
+        label=_('slug'),
+        required=False, max_length=255, 
+        help_text=_(
+            'Used in the URL. If changed, the URL will change. '
+            'Clear it to have it re-created automatically.'),
+        widget=forms.HiddenInput(),
+    )
 
     class Meta:
         model = models.Article
@@ -102,13 +125,12 @@ class ArticleAdminForm(TranslatableModelForm):
 
 class ArticleAdmin(
     AllTranslationsMixin,
-    PlaceholderAdminMixin,
     FrontendEditableAdminMixin,
     ModelAppHookConfig,
     TranslatableAdmin
 ):
     form = ArticleAdminForm
-    list_display = ('title', 'app_config', 'slug', 'is_featured',
+    list_display = ('title', 'preview', 'app_config', 'slug', 'is_featured',
                     'is_published')
     list_filter = [
         'app_config',
@@ -141,6 +163,7 @@ class ArticleAdmin(
             'classes': ('collapse',),
             'fields': (
                 'slug',
+                'oldslug',
                 'meta_title',
                 'meta_description',
                 'meta_keywords',
@@ -166,6 +189,33 @@ class ArticleAdmin(
     app_config_selection_title = ''
     app_config_selection_desc = ''
 
+    class Media:
+        js = (
+            static_with_version("cms/js/dist/bundle.admin.base.min.js"),
+            static_with_version("cms/js/dist/bundle.admin.pagetree.min.js"),
+        )
+        css = {
+            "all": (static_with_version("cms/css/cms.base.css"), static_with_version("cms/css/cms.pagetree.css"))
+        }
+    # Reference from site-packages\cms\templates\admin\cms\page\tree\menu.html
+    @admin.display(description="Preview")
+    def preview(self, obj):
+        language = get_current_language()
+        url = get_object_preview_url(obj, language=language)
+        tooltip = _("View on site")
+        return format_html(
+            f'''
+            <div class="cms-tree-item cms-tree-item-preview">
+                <div class="cms-tree-item-inner cms-hover-tooltip cms-hover-tooltip-left cms-hover-tooltip-delay" 
+                    data-cms-tooltip="{tooltip}">
+                    <a class="js-cms-pagetree-page-view cms-icon-view" href="{url}" target="_top" "="">
+                        <span class="sr-only" style="visibility: hidden">{tooltip}</span>
+                    </a>
+                </div>
+            </div>
+            '''
+        )
+
     def add_view(self, request, *args, **kwargs):
         data = request.GET.copy()
         try:
@@ -178,6 +228,65 @@ class ArticleAdmin(
         data['owner'] = request.user.pk
         request.GET = data
         return super().add_view(request, *args, **kwargs)
+
+    def get_deleted_objects(self, objs, request) -> tuple:
+        deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(objs, request)
+        # This is bad and I should feel bad. (by django-cms official)
+        if 'placeholder' in perms_needed:
+            perms_needed.remove('placeholder')
+        return deleted_objects, model_count, perms_needed, protected
+    def response_add(self, request, obj, post_url_continue=None):
+        l = translation.get_language()
+        textPlugin = add_plugin(
+            obj.content, TextPlugin, l, body=_("double click here to edit article content")
+        )
+        slug = request.POST.get('slug')
+        if slug:
+            obj.slug = unicodeSlugify(slug)
+        else:
+            obj.slug = unicodeSlugify(obj.title)
+        obj.save()
+        
+        return super(ArticleAdmin, self).response_add(request, obj, post_url_continue=None)
+   
+    def get_form(self, request, obj=None, **kwargs):
+        form = super(ArticleAdmin, self).get_form(request, obj, **kwargs)
+        if obj:
+            form.base_fields['oldSlug'].initial = obj.slug
+        else:
+            form.base_fields['oldSlug'].initial = ''
+        return form
+    def response_change(self, request, obj):
+        slug = request.POST.get('slug')
+        if slug:
+            obj.slug = unicodeSlugify(slug)
+        else:
+            obj.slug = unicodeSlugify(obj.title)
+        obj.save()
+        oldslug = request.POST.get('oldSlug')
+        if oldslug != obj.slug:
+            site = get_current_site(request)
+            # Only need to add when using django.contrib.redirects in INSTALLED_APPS, not django-redirect
+            # from urllib.parse import urlparse
+            #
+            # domain = request.headers.get('Origin')
+            # domain = urlparse(domain).netloc if domain else site
+            #
+            # Create a new site when site was not set in settings.py
+            # if site.domain != domain:
+            #     site, _ = Site.objects.get_or_create(
+            #         domain=domain,
+            #         name=domain,
+            #     )
+            oldUrl = reverse_lazy(f'{obj.app_config.namespace}:article-detail', kwargs={'slug': oldslug, })
+            newUrl = reverse_lazy(f'{obj.app_config.namespace}:article-detail', kwargs={'slug': obj.slug, })
+            Redirect.objects.get_or_create(
+                site=site,
+                old_path=oldUrl,
+                new_path=newUrl,
+            )
+            aaa = Redirect.objects.all()
+        return super(ArticleAdmin, self).response_change(request, obj)
 
     def get_view_on_site_url(self, obj=None) -> Optional[str]:
         if obj is not None:
@@ -211,7 +320,6 @@ admin.site.register(models.Serial, SerialAdmin)
 
 class NewsBlogConfigAdmin(
     AllTranslationsMixin,
-    PlaceholderAdminMixin,
     BaseAppHookConfig,
     TranslatableAdmin
 ):

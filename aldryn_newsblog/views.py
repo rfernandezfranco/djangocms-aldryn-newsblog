@@ -4,12 +4,14 @@ from django.db.models import Q
 from django.http import (
     Http404, HttpResponsePermanentRedirect, HttpResponseRedirect,
 )
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.utils import translation
 from django.views.generic import ListView
 from django.views.generic.detail import DetailView
 
 from menus.utils import set_language_changer
+
+from cms.toolbar.utils import get_object_preview_url
 
 from aldryn_apphooks_config.mixins import AppConfigMixin
 from aldryn_categories.models import Category
@@ -425,3 +427,12 @@ class DayArticleList(DateRangeArticleList):
             int(kwargs['year']), int(kwargs['month']), int(kwargs['day']))
         date_to = date_from + relativedelta(days=1)
         return date_from, date_to
+
+class LatestArticlePreview(ArticleListBase):
+    def get(self, request, *args, **kwargs):
+        language = translation.get_language_from_request(self.request, check_path=True)
+        qs = super(LatestArticlePreview, self).get_queryset()
+        article = qs.latest('id')
+        url = get_object_preview_url(article, language=language)
+
+        return redirect(url)

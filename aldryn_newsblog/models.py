@@ -12,9 +12,12 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import override
 
-from cms.models.fields import PlaceholderField
+from functools import cached_property
+from cms.api import add_plugin
+from cms.models.fields import PlaceholderField, PlaceholderRelationField
 from cms.models.pluginmodel import CMSPlugin
 from cms.utils.i18n import get_current_language, get_redirect_on_fallback
+from cms.utils.placeholder import get_placeholder_from_slot
 
 from aldryn_apphooks_config.fields import AppHookConfigField
 from aldryn_categories.fields import CategoryManyToManyField
@@ -24,6 +27,7 @@ from aldryn_translation_tools.models import (
     TranslatedAutoSlugifyMixin, TranslationHelperMixin,
 )
 from djangocms_text_ckeditor.fields import HTMLField
+from djangocms_text_ckeditor.cms_plugins import TextPlugin
 from filer.fields.image import FilerImageField
 from parler.models import TranslatableModel, TranslatedFields
 from sortedm2m.fields import SortedManyToManyField
@@ -117,8 +121,17 @@ class Article(TranslatedAutoSlugifyMixin,
         search_data=models.TextField(blank=True, editable=False)
     )
 
-    content = PlaceholderField('newsblog_article_content',
-                               related_name='newsblog_article_content')
+    # django-cms 3.9.x
+    # content = PlaceholderField('newsblog_article_content', related_name='newsblog_article_content')
+    #
+    # django-cms 4.1.x
+    placeholders = PlaceholderRelationField(related_name='newsblog_article_content')  # Generic relation
+    @cached_property
+    def content(self):
+        return get_placeholder_from_slot(self.placeholders, "newsblog_article_content")  # A specific placeholder
+    def get_template(self):
+        return 'aldryn_newsblog/article_content.html'
+
     author = models.ForeignKey(
         Person,
         null=True,
