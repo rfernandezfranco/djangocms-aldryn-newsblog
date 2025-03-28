@@ -3,6 +3,7 @@
 from __future__ import unicode_literals
 
 import os
+import sys
 
 from django import get_version
 
@@ -173,7 +174,8 @@ def run():
 
     # --boilerplate option will ensure correct boilerplate settings are
     # added to settings
-    runner.cms('aldryn_newsblog', extra_args=[])
+    extra_args = sys.argv[1:] if len(sys.argv) > 1 else []
+    runner.cms('aldryn_newsblog', [sys.argv[0]], extra_args=extra_args)
 
 
 if __name__ == "__main__":
