@@ -18,11 +18,13 @@ cms_version = LooseVersion(cms_string_version)
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
     'INSTALLED_APPS': [
+        'djangocms_alias',
+        'djangocms_versioning',
         'aldryn_apphooks_config',
         'aldryn_categories',
         'aldryn_people',
         'aldryn_translation_tools',
-        'djangocms_text_ckeditor',
+        'djangocms_text',
         'easy_thumbnails',
         'filer',
         'mptt',
@@ -37,6 +39,7 @@ HELPER_SETTINGS = {
             'aldryn_newsblog', 'tests', 'templates'),
     ),
     'ALDRYN_NEWSBLOG_TEMPLATE_PREFIXES': [('dummy', 'dummy'), ],
+    'CMS_CONFIRM_VERSION4': True,
     'CMS_PERMISSION': True,
     # 'CMS_CONFIRM_VERSION4': True,
     'SITE_ID': 1,

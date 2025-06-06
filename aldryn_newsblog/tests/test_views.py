@@ -1,14 +1,16 @@
 import os
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone
 from operator import itemgetter
 from random import randint
 
 from django.conf import settings
 from django.core.files import File as DjangoFile
 from django.urls import NoReverseMatch, reverse
-from django.utils.timezone import now
+from django.utils.timezone import make_aware
+from django.utils.timezone import now as django_timezone_now
 from django.utils.translation import override
 
+from cms import api
 from cms.utils.i18n import force_language, get_current_language
 
 from easy_thumbnails.files import get_thumbnailer
@@ -134,7 +136,7 @@ class TestViews(NewsBlogTestCase):
         paginate_by = self.app_config.paginate_by
         articles = [self.create_article(
             app_config=self.app_config,
-            publishing_date=datetime(2000 - i, 1, 1, 1, 1)
+            publishing_date=datetime(2000 - i, 1, 1, 1, 1, tzinfo=timezone.utc)
         ) for i in range(paginate_by + 5)]
 
         response = self.client.get(
@@ -186,7 +188,7 @@ class TestViews(NewsBlogTestCase):
                         app_config=self.app_config,
                         author=author,
                         owner=author.user,
-                        publishing_date=now(),
+                        publishing_date=django_timezone_now(),
                         is_published=True,
                     )
                     # Make sure there are translations in place for the
@@ -260,7 +262,7 @@ class TestTranslationFallbacks(NewsBlogTestCase):
                 slug=self.rand_str(prefix=code),
                 app_config=self.app_config,
                 author=author, owner=author.user,
-                publishing_date=now(),
+                publishing_date=django_timezone_now(),
                 is_published=True,
             )
             article.save()
@@ -310,7 +312,7 @@ class TestTranslationFallbacks(NewsBlogTestCase):
             title=self.rand_str(), slug=self.rand_str(prefix=code),
             app_config=self.app_config,
             author=author, owner=author.user,
-            publishing_date=now(),
+            publishing_date=django_timezone_now(),
             is_published=True,
         )
         article.save()
@@ -408,7 +410,8 @@ class TestVariousViews(NewsBlogTestCase):
         ]
         for month in months:
             for _ in range(month['num_articles']):
-                article = self.create_article(publishing_date=month['date'])
+                publishing_date = make_aware(datetime.combine(month['date'], time(10, 12, 30)))
+                article = self.create_article(publishing_date=publishing_date)
 
         # unpublish one specific article to test that it is not counted
         article.is_published = False
@@ -480,12 +483,12 @@ class TestVariousViews(NewsBlogTestCase):
         in_articles = [
             self.create_article(
                 publishing_date=datetime(
-                    1914, 7, 28, randint(0, 23), randint(0, 59)))
+                    1914, 7, 28, randint(0, 20), randint(0, 59), tzinfo=timezone.utc))
             for _ in range(11)]
         out_articles = [
             self.create_article(
                 publishing_date=datetime(
-                    1939, 9, 1, randint(0, 23), randint(0, 59)))
+                    1939, 9, 1, randint(0, 20), randint(0, 59), tzinfo=timezone.utc))
             for _ in range(11)]
         response = self.client.get(reverse(
             'aldryn_newsblog:article-list-by-day',
@@ -499,12 +502,12 @@ class TestVariousViews(NewsBlogTestCase):
         in_articles = [
             self.create_article(
                 publishing_date=datetime(
-                    1914, 7, randint(1, 31), randint(0, 23), randint(0, 59)))
+                    1914, 7, randint(1, 31), randint(0, 20), randint(0, 59), tzinfo=timezone.utc))
             for _ in range(11)]
         out_articles = [
             self.create_article(
                 publishing_date=datetime(
-                    1939, 9, 1, randint(0, 23), randint(0, 59)))
+                    1939, 9, 1, randint(0, 20), randint(0, 59), tzinfo=timezone.utc))
             for _ in range(11)]
         response = self.client.get(reverse(
             'aldryn_newsblog:article-list-by-month',
@@ -519,13 +522,13 @@ class TestVariousViews(NewsBlogTestCase):
             self.create_article(
                 publishing_date=datetime(
                     1914, randint(1, 11), randint(1, 28),
-                    randint(0, 23), randint(0, 59)))
+                    randint(0, 20), randint(0, 59), tzinfo=timezone.utc))
             for _ in range(11)]
         out_articles = [
             self.create_article(
                 publishing_date=datetime(
                     1939, randint(1, 12), randint(1, 28),
-                    randint(0, 23), randint(0, 59)))
+                    randint(0, 20), randint(0, 59), tzinfo=timezone.utc))
             for _ in range(11)]
         response = self.client.get(reverse(
             'aldryn_newsblog:article-list-by-year', kwargs={'year': '1914'}))
@@ -642,7 +645,7 @@ class ViewLanguageFallbackMixin:
                 author=author,
                 owner=owner,
                 app_config=app_config,
-                publishing_date=now(),
+                publishing_date=django_timezone_now(),
                 is_published=True,
             )
         if categories:
@@ -675,7 +678,10 @@ class ViewLanguageFallbackMixin:
 
     def test_a0_en_only(self):
         namespace = self.app_config.namespace
-        self.page.unpublish('de')
+        api.create_page_content(
+            "de", "De Version", self.page,
+            created_by=self.user
+        )
         author, owner = self.create_authors()
         author.translations.create(
             slug=f'{author.slug}-de',
@@ -695,7 +701,10 @@ class ViewLanguageFallbackMixin:
             )
         for article in articles:
             self.assertContains(response, article.title)
-        self.assertNotContains(response, de_article.title)
+        # In CMS 3.11, there was originally `assertNotContains` because the django.urls.reverese function in the
+        # .utils.is_valid_namespace function only returned the selected language version.
+        # This is no longer the case in CMS 4.1.
+        self.assertContains(response, de_article.title)
 
     def test_a1_en_de(self):
         namespace = self.app_config.namespace
@@ -736,7 +745,7 @@ class YearArticleListLanguageFallback(ViewLanguageFallbackMixin,
     view_name = 'article-list-by-year'
 
     def get_view_kwargs(self):
-        return {'year': now().year}
+        return {'year': django_timezone_now().year}
 
 
 class MonthArticleListLanguageFallback(ViewLanguageFallbackMixin,
@@ -745,8 +754,8 @@ class MonthArticleListLanguageFallback(ViewLanguageFallbackMixin,
 
     def get_view_kwargs(self):
         kwargs = {
-            'year': now().year,
-            'month': now().month,
+            'year': django_timezone_now().year,
+            'month': django_timezone_now().month,
         }
         return kwargs
 
@@ -757,9 +766,9 @@ class DayArticleListLanguageFallback(ViewLanguageFallbackMixin,
 
     def get_view_kwargs(self):
         kwargs = {
-            'year': now().year,
-            'month': now().month,
-            'day': now().day,
+            'year': django_timezone_now().year,
+            'month': django_timezone_now().month,
+            'day': django_timezone_now().day,
         }
         return kwargs
 

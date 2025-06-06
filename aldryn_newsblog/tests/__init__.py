@@ -4,6 +4,7 @@ import string
 import sys
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, User
 from django.core.cache import cache
 from django.test import RequestFactory
@@ -15,12 +16,16 @@ from cms import api
 from cms.apphook_pool import apphook_pool
 from cms.appresolver import clear_app_resolvers
 from cms.exceptions import AppAlreadyRegistered
+from cms.models import PageContent
 from cms.test_utils.testcases import CMSTestCase, TransactionCMSTestCase
 from cms.toolbar.toolbar import CMSToolbar
 from cms.utils.conf import get_cms_setting
 
 from aldryn_categories.models import Category
 from aldryn_people.models import Person
+from djangocms_alias.models import Alias as AliasModel
+from djangocms_alias.models import AliasContent
+from djangocms_alias.models import Category as AliasCategory
 from parler.utils.context import switch_language
 
 from aldryn_newsblog.cms_apps import NewsBlogApp
@@ -182,13 +187,13 @@ class NewsBlogTestsMixin:
     def setUp(self):
         self.template = get_cms_setting('TEMPLATES')[0][0]
         self.language = settings.LANGUAGES[0][0]
+        self.user, _ = get_user_model().objects.get_or_create(username="python-api")
         self.root_page = api.create_page(
             'root page',
             self.template,
             self.language,
-            published=True,
+            created_by=self.user
         )
-
         try:
             # Django-cms 3.5 doesn't set is_home when create_page is called
             self.root_page.set_as_homepage()
@@ -201,21 +206,42 @@ class NewsBlogTestsMixin:
             paginate_by=15,
         )
         self.page = api.create_page(
-            'page', self.template, self.language, published=True,
+            'page', self.template, self.language,
             parent=self.root_page,
             apphook='NewsBlogApp',
-            apphook_namespace=self.app_config.namespace)
+            apphook_namespace=self.app_config.namespace,
+            created_by=self.user)
         self.plugin_page = api.create_page(
             title="plugin_page", template=self.template, language=self.language,
-            parent=self.root_page, published=True)
-        self.placeholder = self.page.placeholders.all()[0]
+            parent=self.root_page, created_by=self.user)
+
+        self.placeholder = self.page.get_admin_content(self.language).get_placeholders().first()
 
         self.setup_categories()
 
         for page in self.root_page, self.page:
             for language, _ in settings.LANGUAGES[1:]:
-                api.create_title(language, page.get_slug(), page)
-                page.publish(language)
+                api.create_page_content(language, page.get_slug(self.language), page, created_by=self.user)
+
+    def publish_page(self, page, language, user):
+        """Publish page content."""
+        content = PageContent.admin_manager.get(page=page, language=language)
+        version = content.versions.last()
+        version.publish(user)
+
+    def create_alias_content(self, static_code, language, category_name="test category", alias_name="test alias"):
+        category = AliasCategory.objects.create(name=category_name)
+        alias_obj = AliasModel.objects.get_or_create(
+            static_code=static_code,
+            category=category,
+            # site__isnull=True,
+        )[0]
+        alias_content = AliasContent.objects.with_user(self.user).create(
+            alias=alias_obj,
+            name=alias_name,
+            language=language,
+        )
+        return alias_content
 
 
 class CleanUpMixin:
