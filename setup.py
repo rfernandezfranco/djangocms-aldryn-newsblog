@@ -12,6 +12,7 @@ REQUIREMENTS = [
     'djangocms-aldryn-search~=3.0',
     'djangocms-aldryn-translation-tools~=1.0',
     'django-haystack~=3.3',
+    'djangocms-versioning~=2.3',
     'backport-collections~=0.1',
     'djangocms-text~=0.8',
     'django-taggit~=6.1',
