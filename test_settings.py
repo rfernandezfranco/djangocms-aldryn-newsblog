@@ -18,6 +18,15 @@ cms_version = LooseVersion(cms_string_version)
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
     'INSTALLED_APPS': [
+        'django.contrib.auth',
+        'django.contrib.contenttypes',
+        'django.contrib.sessions',
+        'django.contrib.admin',
+        'django.contrib.sites',
+        'django.contrib.staticfiles',
+        'django.contrib.messages',
+        'menus',  # Added menus app for Django CMS
+        'treebeard', # Added treebeard for Django CMS
         'djangocms_alias',
         'djangocms_versioning',
         'aldryn_apphooks_config',
@@ -32,12 +41,33 @@ HELPER_SETTINGS = {
         'sortedm2m',
         'taggit',
         'aldryn_common',
+        'cms',  # Added Django CMS
+        'aldryn_newsblog', # Added the app itself
     ],
-    'TEMPLATE_DIRS': (
-        os.path.join(
-            os.path.dirname(__file__),
-            'aldryn_newsblog', 'tests', 'templates'),
-    ),
+    'STATIC_URL': '/static/', # Added STATIC_URL
+    'STATIC_ROOT': os.path.join(os.path.dirname(__file__), 'staticfiles_collected'), # Added STATIC_ROOT
+    'MEDIA_URL': '/media/', # Often needed too
+    'MEDIA_ROOT': os.path.join(os.path.dirname(__file__), 'media'), # Often needed too
+    'TEMPLATES': [
+        {
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': [
+                os.path.join(os.path.dirname(__file__), 'aldryn_newsblog', 'tests', 'templates'),
+            ],
+            'APP_DIRS': True,
+            'OPTIONS': {
+                'context_processors': [
+                    'django.template.context_processors.debug',
+                    'django.template.context_processors.request', # Required by CMS
+                    'django.contrib.auth.context_processors.auth',
+                    'django.contrib.messages.context_processors.messages',
+                    'django.template.context_processors.i18n',
+                    'cms.context_processors.cms_settings',
+                ],
+            },
+        },
+    ],
+    # 'TEMPLATE_DIRS': (...) # This is now incorporated into TEMPLATES above
     'ALDRYN_NEWSBLOG_TEMPLATE_PREFIXES': [('dummy', 'dummy'), ],
     'CMS_CONFIRM_VERSION4': True,
     'CMS_PERMISSION': True,
@@ -121,11 +151,12 @@ HELPER_SETTINGS = {
         'filer.thumbnail_processors.scale_and_crop_with_subject_location',
         'easy_thumbnails.processors.filters',
     ),
-    # 'DATABASES': {
-    #     'default': {
-    #         'ENGINE': 'django.db.backends.sqlite3',
-    #         'NAME': 'mydatabase',
-    #     },
+    'DATABASES': {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:', # Use in-memory SQLite
+        }
+    },
     #     'mysql': {
     #         'ENGINE': 'django.db.backends.mysql',
     #         'NAME': 'newsblog_test',
@@ -161,6 +192,13 @@ HELPER_SETTINGS = {
         'cms.middleware.language.LanguageCookieMiddleware'
     ]
 }
+
+# Ensure settings are configured when test_settings.py is imported as a module
+from django.conf import settings
+if not settings.configured:
+    settings.configure(**HELPER_SETTINGS)
+# import django # django.setup() should be called by the management command utility
+# django.setup() # Removed to prevent reentrancy error
 
 
 def boolean_ish(var):

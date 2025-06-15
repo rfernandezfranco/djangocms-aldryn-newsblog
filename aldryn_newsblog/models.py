@@ -69,9 +69,42 @@ class Serial(models.Model):
         return self.name
 
 
-class Article(TranslatedAutoSlugifyMixin,
-              TranslationHelperMixin,
-              TranslatableModel):
+class ArticleGrouper(models.Model):
+    app_config = AppHookConfigField(
+        NewsBlogConfig,
+        verbose_name=_('Section'),
+        help_text='',
+        on_delete=models.CASCADE,
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name=_('owner'),
+        on_delete=models.CASCADE,
+    )
+    author = models.ForeignKey(
+        Person,
+        null=True,
+        blank=True,
+        verbose_name=_('author'),
+        on_delete=models.SET_NULL,
+    )
+    serial = models.ForeignKey(
+        Serial,
+        verbose_name=_('Serial'),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    episode = models.PositiveIntegerField(verbose_name=_('Episode'), default=1)
+    # objects = RelatedManager() # Commented out for now
+
+    def __str__(self):
+        return f"ArticleGrouper {self.pk}"
+
+
+class ArticleContent(TranslatedAutoSlugifyMixin,
+                     TranslationHelperMixin,
+                     TranslatableModel):
 
     # TranslatedAutoSlugifyMixin options
     slug_source_field_name = 'title'
@@ -85,6 +118,12 @@ class Article(TranslatedAutoSlugifyMixin,
         False
     )
 
+    article_grouper = models.ForeignKey(
+        ArticleGrouper,
+        on_delete=models.CASCADE,
+        related_name='contents'
+    )
+
     translations = TranslatedFields(
         title=models.CharField(_('title'), max_length=234),
         slug=models.SlugField(
@@ -95,6 +134,7 @@ class Article(TranslatedAutoSlugifyMixin,
             help_text=_(
                 'Used in the URL. If changed, the URL will change. '
                 'Clear it to have it re-created automatically.'),
+            unique=True, # Make slug unique per language again
         ),
         lead_in=HTMLField(
             verbose_name=_('lead'), default='',
@@ -112,37 +152,18 @@ class Article(TranslatedAutoSlugifyMixin,
             verbose_name=_('meta description'), blank=True, default=''),
         meta_keywords=models.TextField(
             verbose_name=_('meta keywords'), blank=True, default=''),
-        meta={'unique_together': (('language_code', 'slug', ), )},
+        # meta={'unique_together': (('language_code', 'article_grouper', 'slug',),)}, # Moved to main Meta
 
         search_data=models.TextField(blank=True, editable=False)
     )
 
     content = PlaceholderField('newsblog_article_content',
                                related_name='newsblog_article_content')
-    author = models.ForeignKey(
-        Person,
-        null=True,
-        blank=True,
-        verbose_name=_('author'),
-        on_delete=models.CASCADE,
-    )
-    owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name=_('owner'),
-        on_delete=models.CASCADE,
-    )
-    app_config = AppHookConfigField(
-        NewsBlogConfig,
-        verbose_name=_('Section'),
-        help_text='',
-    )
+    # author, owner, app_config moved to ArticleGrouper
     categories = CategoryManyToManyField('aldryn_categories.Category',
                                          verbose_name=_('categories'),
                                          blank=True)
-    publishing_date = models.DateTimeField(_('publishing date'),
-                                           default=now)
-    is_published = models.BooleanField(_('is published'), default=False,
-                                       db_index=True)
+    # publishing_date, is_published removed for versioning
     is_featured = models.BooleanField(_('is featured'), default=False,
                                       db_index=True)
     featured_image = FilerImageField(
@@ -162,47 +183,48 @@ class Article(TranslatedAutoSlugifyMixin,
     # which in the end causes to add reversed releted-to entry as well:
     #
     # https://github.com/django/django/blob/1.8.4/django/db/models/fields/related.py#L977
-    related = SortedManyToManyField('self', verbose_name=_('related articles'),
-                                    blank=True, symmetrical=False)
+    related = SortedManyToManyField(
+        ArticleGrouper,  # Changed from 'self'
+        verbose_name=_('related articles'),
+        blank=True,
+        symmetrical=False
+    )
+    # serial, episode moved to ArticleGrouper
 
-    serial = models.ForeignKey(Serial, verbose_name=_('Serial'), null=True, blank=True, on_delete=models.SET_NULL)
-    episode = models.PositiveIntegerField(verbose_name=_('Episode'), default=1)
-
-    objects = RelatedManager()
+    # objects = RelatedManager() # Commented out, to be reviewed
 
     class Meta:
-        ordering = ['-publishing_date']
+        # Publishing date is no longer on this model. Versioning will handle published state.
+        # Ordering might be by grouper's creation date or ID, or by version's publish date.
+        # For now, let's use grouper's PK.
+        ordering = ['-article_grouper__pk'] # Placeholder ordering
+        # unique_together = (('article_grouper', 'slug'),) # Removed due to system check errors
 
-    @property
-    def published(self):
-        """
-        Returns True only if the article (is_published == True) AND has a
-        published_date that has passed.
-        """
-        return self.is_published and self.publishing_date <= now()
-
-    @property
-    def future(self):
-        """
-        Returns True if the article is published but is scheduled for a
-        future date/time.
-        """
-        return self.is_published and self.publishing_date > now()
+    # Removed published and future properties as they depended on fields now removed.
 
     def get_absolute_url(self, language=None):
-        """Returns the url for this Article in the selected permalink format."""
+        """Returns the url for this ArticleContent in the selected permalink format."""
         if not language:
             language = get_current_language()
         kwargs = {}
-        permalink_type = self.app_config.permalink_type
+        # app_config is now on the grouper
+        permalink_type = self.article_grouper.app_config.permalink_type
+
+        # publishing_date for URL construction will need to come from the Version object.
+        # This is a temporary placeholder. This method will need significant rework
+        # once djangocms-versioning is fully integrated and provides the published version instance.
+        publishing_date = now() # FIXME: This needs to be the version's publishing date
+
         if 'y' in permalink_type:
-            kwargs.update(year=self.publishing_date.year)
+            kwargs.update(year=publishing_date.year)
         if 'm' in permalink_type:
-            kwargs.update(month="%02d" % self.publishing_date.month)
+            kwargs.update(month="%02d" % publishing_date.month)
         if 'd' in permalink_type:
-            kwargs.update(day="%02d" % self.publishing_date.day)
+            kwargs.update(day="%02d" % publishing_date.day)
         if 'i' in permalink_type:
-            kwargs.update(pk=self.pk)
+            # The PK in the URL could be the grouper's PK or the content's PK
+            # depending on strategy. Let's assume grouper PK for now.
+            kwargs.update(pk=self.article_grouper.pk)
         if 's' in permalink_type:
             slug, lang = self.known_translation_getter(
                 'slug', default=None, language_code=language)
@@ -212,18 +234,21 @@ class Article(TranslatedAutoSlugifyMixin,
                     language = lang
                 kwargs.update(slug=slug)
 
-        if self.app_config and self.app_config.namespace:
-            namespace = f'{self.app_config.namespace}:'
+        # app_config is now on the grouper
+        if self.article_grouper.app_config and self.article_grouper.app_config.namespace:
+            namespace = f'{self.article_grouper.app_config.namespace}:'
         else:
             namespace = ''
 
         with override(language):
+            # The URL name might need to change if it implies a specific model,
+            # but for now, assume 'article-detail' refers to the concept of an article.
             return reverse(f'{namespace}article-detail', kwargs=kwargs)
 
     def get_search_data(self, language=None, request=None):
         """
         Provides an index for use with Haystack, or, for populating
-        Article.translations.search_data.
+        ArticleContent.translations.search_data.
         """
         if not self.pk:
             return ''
@@ -249,18 +274,13 @@ class Article(TranslatedAutoSlugifyMixin,
     def save(self, *args, **kwargs):
         # Update the search index
         if self.update_search_on_save:
-            self.search_data = self.get_search_data()
+            # Ensure to pass the current language to get_search_data
+            current_language = self.get_current_language() if hasattr(self, 'get_current_language') else get_current_language()
+            self.search_data = self.get_search_data(language=current_language)
 
-        # Ensure there is an owner.
-        if self.app_config.create_authors and self.author is None:
-            self.author = Person.objects.get_or_create(
-                user=self.owner,
-                defaults={
-                    'name': ' '.join((
-                        self.owner.first_name,
-                        self.owner.last_name,
-                    )),
-                })[0]
+        # Author creation logic is removed from here.
+        # It should be handled when an ArticleGrouper instance is created.
+
         # slug would be generated by TranslatedAutoSlugifyMixin
         super().save(*args, **kwargs)
 
@@ -335,7 +355,7 @@ class NewsBlogArticleSearchPlugin(NewsBlogCMSPlugin):
     )
 
     def __str__(self):
-        return gettext('%s archive') % (self.app_config.get_app_title(), )
+        return gettext('%s search') % (self.app_config.get_app_title(), )
 
 
 class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
@@ -349,29 +369,33 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         """
 
         # The basic subquery (for logged-in content managers in edit mode)
+        # FIXME: This SQL needs full review with versioning.
+        # It should count published ArticleContent versions grouped by author on ArticleGrouper.
         subquery = """
-            SELECT COUNT(*)
-            FROM aldryn_newsblog_article
-            WHERE
-                aldryn_newsblog_article.author_id =
-                    aldryn_people_person.id AND
-                aldryn_newsblog_article.app_config_id = %d"""
+            SELECT COUNT(DISTINCT grouper.id)
+            FROM aldryn_people_person AS person
+            INNER JOIN aldryn_newsblog_articlegrouper AS grouper ON person.id = grouper.author_id
+            WHERE grouper.app_config_id = %s AND person.id = aldryn_people_person.id"""
+            # Published state check (via Version model) needs to be added here.
 
         # For other users, limit subquery to published articles
         if not self.get_edit_mode(request):
-            subquery += """ AND
-                aldryn_newsblog_article.is_published {} AND
-                aldryn_newsblog_article.publishing_date <= {}
-            """.format(SQL_IS_TRUE, SQL_NOW_FUNC)
+            # FIXME: This part needs to integrate with djangocms-versioning state.
+            # For now, this condition is effectively removed, making counts potentially inaccurate.
+            # subquery += """ AND EXISTS (SELECT 1 FROM djangocms_versioning_version v
+            # JOIN aldryn_newsblog_articlecontent ac ON v.object_id = ac.id
+            # WHERE v.content_type_id = (SELECT id FROM django_content_type WHERE model = 'articlecontent')
+            # AND ac.article_grouper_id = grouper.id AND v.state = 'published')"""
+            pass  # Placeholder for versioning check
 
         # Now, use this subquery in the construction of the main query.
         query = """
-            SELECT ({}) as article_count, aldryn_people_person.*
-            FROM aldryn_people_person
-        """.format(subquery % (self.app_config.pk, ))
+            SELECT person.*, ({}) as article_count
+            FROM aldryn_people_person AS person
+        """.format(subquery % (self.app_config.pk, )) # Pass app_config.pk to subquery
 
         raw_authors = list(Person.objects.raw(query))
-        authors = [author for author in raw_authors if author.article_count]
+        authors = [author for author in raw_authors if hasattr(author, 'article_count') and author.article_count > 0]
         return sorted(authors, key=lambda x: x.article_count, reverse=True)
 
     def __str__(self):
@@ -391,31 +415,29 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         then it will be all articles.
         """
 
+        # FIXME: This SQL needs full review with versioning.
+        # It should count published ArticleContent versions per category.
         subquery = """
-            SELECT COUNT(*)
-            FROM aldryn_newsblog_article, aldryn_newsblog_article_categories
-            WHERE
-                aldryn_newsblog_article_categories.category_id =
-                    aldryn_categories_category.id AND
-                aldryn_newsblog_article_categories.article_id =
-                    aldryn_newsblog_article.id AND
-                aldryn_newsblog_article.app_config_id = %d
-        """ % (self.app_config.pk, )
+            SELECT COUNT(DISTINCT content.id)
+            FROM aldryn_categories_category AS cat
+            INNER JOIN aldryn_newsblog_articlecontent_categories AS content_cat ON cat.id = content_cat.category_id
+            INNER JOIN aldryn_newsblog_articlecontent AS content ON content_cat.articlecontent_id = content.id
+            INNER JOIN aldryn_newsblog_articlegrouper AS grouper ON content.article_grouper_id = grouper.id
+            WHERE grouper.app_config_id = %s AND cat.id = aldryn_categories_category.id"""
+            # Published state check (via Version model) needs to be added here.
 
         if not self.get_edit_mode(request):
-            subquery += """ AND
-                aldryn_newsblog_article.is_published {} AND
-                aldryn_newsblog_article.publishing_date <= {}
-            """.format(SQL_IS_TRUE, SQL_NOW_FUNC)
+            # FIXME: This part needs to integrate with djangocms-versioning state.
+            pass  # Placeholder for versioning check
 
         query = """
-            SELECT ({}) as article_count, aldryn_categories_category.*
-            FROM aldryn_categories_category
-        """.format(subquery)
+            SELECT cat.*, ({}) as article_count
+            FROM aldryn_categories_category AS cat
+        """.format(subquery % (self.app_config.pk,))
 
         raw_categories = list(Category.objects.raw(query))
         categories = [
-            category for category in raw_categories if category.article_count]
+            category for category in raw_categories if hasattr(category, 'article_count') and category.article_count > 0]
         return sorted(categories, key=lambda x: x.article_count, reverse=True)
 
 
@@ -427,18 +449,35 @@ class NewsBlogFeaturedArticlesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
     )
 
     def get_articles(self, request):
+        # FIXME: This logic needs review with versioning to correctly filter by published state.
         if not self.article_count:
-            return Article.objects.none()
-        queryset = Article.objects
-        if not self.get_edit_mode(request):
-            queryset = queryset.published()
+            return ArticleContent.objects.none()
+
+        # Base queryset for ArticleContent linked to the correct app_config and featured
+        queryset = ArticleContent.objects.filter(
+            article_grouper__app_config=self.app_config,
+            is_featured=True
+        )
+
         languages = get_valid_languages_from_request(
             self.app_config.namespace, request)
         if self.language not in languages:
-            return queryset.none()
-        queryset = queryset.translated(*languages).filter(
-            app_config=self.app_config,
-            is_featured=True)
+            return queryset.none() # Return empty from the current queryset
+
+        queryset = queryset.translated(*languages)
+
+        # Placeholder: Actual published state filtering would involve djangocms-versioning's Version model.
+        # Example:
+        # if not self.get_edit_mode(request):
+        #     ct = ContentType.objects.get_for_model(ArticleContent)
+        #     published_pks = Version.objects.filter(
+        #         content_type=ct, object_id__in=queryset.values('pk'), state=PUBLISHED
+        #     ).values_list('object_id', flat=True)
+        #     queryset = queryset.filter(pk__in=published_pks)
+        # else: # In edit mode, maybe order differently or show all versions' contents
+        #     pass
+
+        # For now, returning without explicit published filter beyond what was in ArticleContent
         return queryset[:self.article_count]
 
     def __str__(self):
@@ -474,22 +513,38 @@ class NewsBlogLatestArticlesPlugin(PluginEditModeMixin,
         Returns a queryset of the latest N articles. N is the plugin setting:
         latest_articles.
         """
-        queryset = Article.objects
-        featured_qs = Article.objects.all().filter(is_featured=True)
-        if not self.get_edit_mode(request):
-            queryset = queryset.published()
-            featured_qs = featured_qs.published()
+        # FIXME: This logic needs review with versioning for published state and ordering.
         languages = get_valid_languages_from_request(
             self.app_config.namespace, request)
         if self.language not in languages:
-            return queryset.none()
-        queryset = queryset.translated(*languages).filter(
-            app_config=self.app_config)
-        featured_qs = featured_qs.translated(*languages).filter(
-            app_config=self.app_config)
-        exclude_featured = featured_qs.values_list(
-            'pk', flat=True)[:self.exclude_featured]
-        queryset = queryset.exclude(pk__in=list(exclude_featured))
+            return ArticleContent.objects.none()
+
+        base_queryset = ArticleContent.objects.filter(
+            article_grouper__app_config=self.app_config
+        ).translated(*languages)
+
+        excluded_pks = []
+        if self.exclude_featured > 0:
+            # This part also needs to consider published versions of featured articles
+            featured_qs = base_queryset.filter(is_featured=True)
+            # Placeholder for versioning-aware ordering and filtering for featured
+            # featured_qs = filter_by_published_versions(featured_qs, request)
+            excluded_pks = featured_qs.values_list('pk', flat=True)[:self.exclude_featured]
+
+        queryset = base_queryset.exclude(pk__in=excluded_pks)
+
+        # Placeholder: Actual published state filtering and ordering would involve djangocms-versioning.
+        # Example:
+        # if not self.get_edit_mode(request):
+        #     ct = ContentType.objects.get_for_model(ArticleContent)
+        #     published_pks = Version.objects.filter(
+        #         content_type=ct, object_id__in=queryset.values('pk'), state=PUBLISHED
+        #     ).order_by('-published_date').values_list('object_id', flat=True) # Assuming published_date on Version
+        #     queryset = queryset.filter(pk__in=published_pks) # This re-filters, better to order then slice
+        #     # A more complex query would be needed to order by version's publishing date correctly before slicing
+        # else: # In edit mode
+        #     queryset = queryset.order_by('-article_grouper__pk') # Fallback ordering for now
+
         return queryset[:self.latest_articles]
 
     def __str__(self):
@@ -514,14 +569,32 @@ class NewsBlogRelatedPlugin(PluginEditModeMixin, AdjustableCacheModelMixin,
         """
         Returns a queryset of articles that are related to the given article.
         """
+        # FIXME: This logic needs review with versioning. `article` is ArticleContent.
+        # `article.related` points to ArticleGrouper instances.
+        if not article or not hasattr(article, 'article_grouper'):
+            return ArticleContent.objects.none()
+
         languages = get_valid_languages_from_request(
-            article.app_config.namespace, request)
+            article.article_grouper.app_config.namespace, request)
         if self.language not in languages:
-            return Article.objects.none()
-        qs = article.related.translated(*languages)
-        if not self.get_edit_mode(request):
-            qs = qs.published()
-        return qs
+            return ArticleContent.objects.none()
+
+        related_groupers = article.related.all() # QuerySet of ArticleGrouper
+
+        # Placeholder: Fetch published ArticleContent versions for these groupers.
+        # This is a conceptual query.
+        # queryset = ArticleContent.objects.filter(
+        #     article_grouper__in=related_groupers
+        # ).translated(*languages)
+        # if not self.get_edit_mode(request):
+        #     ct = ContentType.objects.get_for_model(ArticleContent)
+        #     published_pks = Version.objects.filter(
+        #         content_type=ct, object_id__in=queryset.values('pk'), state=PUBLISHED
+        #     ).values_list('object_id', flat=True)
+        #     queryset = queryset.filter(pk__in=published_pks)
+        # return queryset
+        # For now, returning all contents of related groupers, not filtered by publish state
+        return ArticleContent.objects.filter(article_grouper__in=related_groupers).translated(*languages)
 
     def __str__(self):
         return gettext('Related articles')
@@ -537,31 +610,30 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         publishing_date has passed. If the user is a logged-in cms operator,
         then it will be all articles.
         """
-
-        article_content_type = ContentType.objects.get_for_model(Article)
+        # FIXME: This SQL needs full review with versioning.
+        # Tags are on ArticleContent. Published state needs to be derived from Version model.
+        article_content_type = ContentType.objects.get_for_model(ArticleContent)
 
         subquery = """
-            SELECT COUNT(*)
-            FROM aldryn_newsblog_article, taggit_taggeditem
-            WHERE
-                taggit_taggeditem.tag_id = taggit_tag.id AND
-                taggit_taggeditem.content_type_id = %d AND
-                taggit_taggeditem.object_id = aldryn_newsblog_article.id AND
-                aldryn_newsblog_article.app_config_id = %d"""
+            SELECT COUNT(DISTINCT content.id)
+            FROM taggit_tag AS tag
+            INNER JOIN taggit_taggeditem AS tagged_item ON tag.id = tagged_item.tag_id
+            INNER JOIN aldryn_newsblog_articlecontent AS content ON tagged_item.object_id = content.id AND tagged_item.content_type_id = %s
+            INNER JOIN aldryn_newsblog_articlegrouper AS grouper ON content.article_grouper_id = grouper.id
+            WHERE grouper.app_config_id = %s AND tag.id = taggit_tag.id"""
+            # Published state check (via Version model) needs to be added here.
 
         if not self.get_edit_mode(request):
-            subquery += """ AND
-                aldryn_newsblog_article.is_published {} AND
-                aldryn_newsblog_article.publishing_date <= {}
-            """.format(SQL_IS_TRUE, SQL_NOW_FUNC)
+            # FIXME: This part needs to integrate with djangocms-versioning state.
+            pass  # Placeholder for versioning check
 
         query = """
-            SELECT ({}) as article_count, taggit_tag.*
-            FROM taggit_tag
+            SELECT tag.*, ({}) as article_count
+            FROM taggit_tag AS tag
         """.format(subquery % (article_content_type.id, self.app_config.pk))
 
         raw_tags = list(Tag.objects.raw(query))
-        tags = [tag for tag in raw_tags if tag.article_count]
+        tags = [tag for tag in raw_tags if hasattr(tag, 'article_count') and tag.article_count > 0]
         return sorted(tags, key=lambda x: x.article_count, reverse=True)
 
     def __str__(self):
@@ -577,12 +649,21 @@ def update_search_data(sender, instance, **kwargs):
     """
     is_cms_plugin = issubclass(instance.__class__, CMSPlugin)
 
-    if Article.update_search_on_save and is_cms_plugin:
+    if ArticleContent.update_search_on_save and is_cms_plugin: # Changed Article to ArticleContent
         placeholder = (getattr(instance, '_placeholder_cache', None) or  # noqa: W504
                        instance.placeholder)
         if hasattr(placeholder, '_attached_model_cache'):
-            if placeholder._attached_model_cache == Article:
-                article = placeholder._attached_model_cache.objects.language(
-                    instance.language).get(content=placeholder.pk)
-                article.search_data = article.get_search_data(instance.language)
-                article.save()
+            if placeholder._attached_model_cache == ArticleContent: # Changed Article to ArticleContent
+                try:
+                    # Ensure placeholder.pk is valid if placeholder comes from a just deleted plugin
+                    if placeholder and placeholder.pk:
+                        article_content = placeholder._attached_model_cache.objects.language( # Renamed variable
+                            instance.language).get(content=placeholder.pk)
+                        current_language = instance.language or get_current_language()
+                        # Pass request if available, needed by get_plugin_index_data
+                        # This might be problematic if request is not easily available here.
+                        # Consider if get_search_data truly needs request or can work without it.
+                        article_content.search_data = article_content.get_search_data(current_language, request=get_request())
+                        article_content.save()
+                except ArticleContent.DoesNotExist:
+                    pass # ArticleContent might have been deleted

@@ -21,7 +21,7 @@ from taggit.models import Tag
 from aldryn_newsblog.compat import toolbar_edit_mode_active
 from aldryn_newsblog.utils.utilities import get_valid_languages_from_request
 
-from .models import Article
+from .models import ArticleContent, ArticleGrouper # Changed Article to ArticleContent, ArticleGrouper
 from .utils import add_prefix_to_path
 
 
@@ -67,9 +67,16 @@ class PreviewModeMixin(EditModeMixin):
         user = self.request.user
         user_can_edit = user.is_staff or user.is_superuser
         if not (self.edit_mode or user_can_edit):
-            qs = qs.published()
+            # FIXME #VERSIONING: .published() needs to be replaced with versioning logic
+            # qs = qs.published()
+            pass # For now, show all if edit_mode or user_can_edit is false
         language = translation.get_language()
-        qs = qs.active_translations(language).namespace(self.namespace)
+        # FIXME #VERSIONING: .namespace() needs adjustment if it relied on Article structure.
+        # It should now filter based on article_grouper.app_config.namespace.
+        # Assuming self.namespace is the namespace string from the apphook.
+        if hasattr(self, 'namespace') and self.namespace:
+             qs = qs.filter(article_grouper__app_config__namespace=self.namespace)
+        qs = qs.active_translations(language)
         return qs
 
 
@@ -93,7 +100,7 @@ class AppHookCheckMixin:
 
 class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
                     TranslatableSlugMixin, TemplatePrefixMixin, DetailView):
-    model = Article
+    model = ArticleContent # Changed Article to ArticleContent
     slug_field = 'slug'
     year_url_kwarg = 'year'
     month_url_kwarg = 'month'
@@ -164,36 +171,40 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
         if queryset is None:
             queryset = self.get_queryset()
         if object is None:
-            object = self.get_object(self)
-        prev_objs = queryset.filter(
-            publishing_date__lt=object.publishing_date
-        ).order_by(
-            '-publishing_date'
-        )[:1]
-        if prev_objs:
-            return prev_objs[0]
-        else:
-            return None
+            object = self.get_object(self) # object is ArticleContent
+        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
+        # This logic needs to compare version publication dates.
+        # For now, returning None as a placeholder.
+        # prev_objs = queryset.filter(
+        #     article_grouper__SOME_VERSION_FIELD__lt=object.article_grouper.SOME_VERSION_FIELD
+        # ).order_by(
+        #     '-article_grouper__SOME_VERSION_FIELD'
+        # )[:1]
+        # if prev_objs:
+        #     return prev_objs[0]
+        return None
 
     def get_next_object(self, queryset=None, object=None):
         if queryset is None:
             queryset = self.get_queryset()
         if object is None:
-            object = self.get_object(self)
-        next_objs = queryset.filter(
-            publishing_date__gt=object.publishing_date
-        ).order_by(
-            'publishing_date'
-        )[:1]
-        if next_objs:
-            return next_objs[0]
-        else:
-            return None
+            object = self.get_object(self) # object is ArticleContent
+        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
+        # This logic needs to compare version publication dates.
+        # For now, returning None as a placeholder.
+        # next_objs = queryset.filter(
+        #     article_grouper__SOME_VERSION_FIELD__gt=object.article_grouper.SOME_VERSION_FIELD
+        # ).order_by(
+        #     'article_grouper__SOME_VERSION_FIELD'
+        # )[:1]
+        # if next_objs:
+        #     return next_objs[0]
+        return None
 
 
 class ArticleListBase(AppConfigMixin, AppHookCheckMixin, TemplatePrefixMixin,
                       PreviewModeMixin, ViewUrlMixin, ListView):
-    model = Article
+    model = ArticleContent # Changed Article to ArticleContent
     show_header = False
 
     def get_paginate_by(self, queryset):
@@ -250,16 +261,21 @@ class ArticleList(ArticleListBase):
             # plugin on the list view page without duplicate entries in page qs.
             exclude_count = self.config.exclude_featured
             if exclude_count:
-                featured_qs = Article.objects.all().filter(is_featured=True)
-                if not self.edit_mode:
-                    featured_qs = featured_qs.published()
-                exclude_featured = featured_qs[:exclude_count].values_list('pk')
-                qs = qs.exclude(pk__in=exclude_featured)
+                # FIXME #VERSIONING: .published() needs re-evaluation. is_featured is on ArticleContent.
+                # This needs to get PKs of ArticleContent that are featured and published (via versioning).
+                featured_qs = ArticleContent.objects.filter(
+                    article_grouper__app_config=self.config, # Assuming self.config is the app_config instance
+                    is_featured=True
+                )
+                # if not self.edit_mode:
+                #    featured_qs = featured_qs.published() # Placeholder for versioning's published filter
+                exclude_featured_pks = featured_qs.values_list('pk', flat=True)[:exclude_count]
+                qs = qs.exclude(pk__in=exclude_featured_pks)
         return qs
 
 
 class ArticleSearchResultsList(ArticleListBase):
-    model = Article
+    # model = ArticleContent is inherited from ArticleListBase
     http_method_names = ['get', 'post', ]
     partial_name = 'aldryn_newsblog/includes/search_results.html'
     template_name = 'aldryn_newsblog/article_list.html'
@@ -282,9 +298,12 @@ class ArticleSearchResultsList(ArticleListBase):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if not self.edit_mode:
-            qs = qs.published()
+        # if not self.edit_mode:
+            # FIXME #VERSIONING: .published() needs re-evaluation
+            # qs = qs.published()
         if self.query:
+            # search_data is on ArticleContent's translations.
+            # title and lead_in are also on translations.
             return qs.filter(
                 Q(translations__title__icontains=self.query) |  # noqa: #W504
                 Q(translations__lead_in__icontains=self.query) |  # noqa: #W504
@@ -309,10 +328,9 @@ class ArticleSearchResultsList(ArticleListBase):
 class AuthorArticleList(ArticleListBase):
     """A list of articles written by a specific author."""
     def get_queryset(self):
-        # Note: each Article.author is Person instance with guaranteed
-        # presence of unique slug field, which allows to use it in URLs
+        # author is now on ArticleGrouper.
         return super().get_queryset().filter(
-            author=self.author
+            article_grouper__author=self.author
         )
 
     def get(self, request, author, *args, **kwargs):
@@ -376,10 +394,14 @@ class TagArticleList(ArticleListBase):
 class DateRangeArticleList(ArticleListBase):
     """A list of articles for a specific date range"""
     def get_queryset(self):
-        return super().get_queryset().filter(
-            publishing_date__gte=self.date_from,
-            publishing_date__lt=self.date_to
-        )
+        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
+        # This requires filtering based on Version object's publication date.
+        # This is a placeholder and will likely not work as intended.
+        # return super().get_queryset().filter(
+        #     article_grouper__SOME_VERSION_FIELD__gte=self.date_from, # Placeholder
+        #     article_grouper__SOME_VERSION_FIELD__lt=self.date_to  # Placeholder
+        # )
+        return super().get_queryset().none() # Safest placeholder for now
 
     def _daterange_from_kwargs(self, kwargs):
         raise NotImplementedError('Subclasses of DateRangeArticleList need to'

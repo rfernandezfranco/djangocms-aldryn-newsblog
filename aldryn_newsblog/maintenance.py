@@ -9,11 +9,12 @@ HEALTHCHECK_FUNCTIONS = [
 from django.http import HttpRequest
 
 from .cms_appconfig import NewsBlogConfig
-from .models import Article
+from .models import ArticleContent, ArticleGrouper # Changed Article
 
 
 def healthcheck(request: HttpRequest, *args, **kwargs) -> None:
     """Checking that the system is functional."""
-    Article.objects.count()
+    ArticleContent.objects.count() # Changed from Article
+    ArticleGrouper.objects.count() # Added grouper count check, useful for health
     if not NewsBlogConfig.objects.count():
         raise RuntimeError('not NewsBlogConfig.objects.count()')

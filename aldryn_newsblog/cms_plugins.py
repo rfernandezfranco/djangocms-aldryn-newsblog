@@ -80,12 +80,12 @@ class NewsBlogArchivePlugin(AdjustableCacheMixin, NewsBlogPlugin):
         request = context.get('request')
         context['instance'] = instance
 
-        queryset = models.Article.objects
-
-        context['dates'] = queryset.get_months(
-            request,
-            namespace=instance.app_config.namespace
-        )
+        # FIXME #VERSIONING: .get_months() was likely a custom manager method on Article.
+        # This needs to be reimplemented for ArticleContent, possibly querying ArticleGrouper
+        # for dates associated with published versions.
+        # For now, setting dates to empty list to avoid error.
+        # queryset = models.ArticleContent.objects
+        context['dates'] = [] # queryset.get_months( ... )
         return context
 
 
@@ -184,10 +184,12 @@ class NewsBlogRelatedPlugin(AdjustableCacheMixin, NewsBlogPlugin):
             view_name = request.resolver_match.view_name
             namespace = request.resolver_match.namespace
             if view_name == f'{namespace}:article-detail':
-                article = models.Article.objects.active_translations(
-                    slug=request.resolver_match.kwargs['slug'])
-                if article.count() == 1:
-                    return article[0]
+                # FIXME #VERSIONING: active_translations might need re-evaluation for versioning context.
+                # Slug is on ArticleContent.
+                article_content = models.ArticleContent.objects.active_translations(
+                    slug=request.resolver_match.kwargs['slug']
+                ).first() # Using .first() instead of .count() and [0]
+                return article_content
         return None
 
     def render(self, context, instance, placeholder):
@@ -226,7 +228,15 @@ class NewsBlogSerialEpisodesPlugin(AdjustableCacheMixin, NewsBlogPlugin):
 
     def render(self, context, instance, placeholder):
         context = super().render(context, instance, placeholder)
-        article = context.get('article')
-        if article is not None and article.serial is not None:
-            context['serial_episodes'] = article.serial.article_set.exclude(pk=article.pk).order_by('episode')
+        article_content = context.get('article') # This will be an ArticleContent instance
+        if article_content is not None and hasattr(article_content, 'article_grouper') and article_content.article_grouper and article_content.article_grouper.serial is not None:
+            serial = article_content.article_grouper.serial
+            # FIXME #VERSIONING: This needs to fetch published ArticleContent versions related to this serial.
+            # Ordering should be by episode on ArticleGrouper.
+            # Exclude the current article_content itself.
+            context['serial_episodes'] = models.ArticleContent.objects.filter(
+                article_grouper__serial=serial
+            ).exclude(pk=article_content.pk).order_by('article_grouper__episode')
+        else:
+            context['serial_episodes'] = []
         return context

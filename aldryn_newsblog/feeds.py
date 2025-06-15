@@ -8,7 +8,7 @@ from django.utils.translation import gettext as _
 from aldryn_apphooks_config.utils import get_app_instance
 from aldryn_categories.models import Category
 
-from aldryn_newsblog.models import Article
+from aldryn_newsblog.models import ArticleContent, ArticleGrouper, NewsBlogConfig # Changed Article
 from aldryn_newsblog.utils.utilities import get_valid_languages
 
 
@@ -33,13 +33,19 @@ class LatestArticlesFeed(Feed):
         return _('Articles on %(site_name)s') % msgformat
 
     def get_queryset(self):
-        qs = Article.objects.published().namespace(self.namespace).translated(
-            *self.valid_languages)
+        # FIXME #VERSIONING: .published() and namespace() are not standard model managers.
+        # Need to filter by published versions and app_config on ArticleGrouper.
+        # app_config is on ArticleGrouper.
+        qs = ArticleContent.objects.filter(
+            article_grouper__app_config__namespace=self.namespace
+        ).translated(*self.valid_languages)
         return qs
 
     def items(self, obj):
         qs = self.get_queryset()
-        return qs.order_by('-publishing_date')[:10]
+        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
+        # Order by version's publish date. For now, ordering by grouper PK.
+        return qs.order_by('-article_grouper__pk')[:10] # Changed from publishing_date
 
     def item_title(self, item):
         return item.title
@@ -48,7 +54,9 @@ class LatestArticlesFeed(Feed):
         return item.lead_in
 
     def item_pubdate(self, item):
-        return item.publishing_date
+        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
+        # Needs to come from Version object. Placeholder.
+        return None # Was: item.publishing_date
 
 
 class TagFeed(LatestArticlesFeed):

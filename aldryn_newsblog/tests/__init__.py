@@ -29,7 +29,8 @@ from djangocms_alias.models import Category as AliasCategory
 from parler.utils.context import switch_language
 
 from aldryn_newsblog.cms_apps import NewsBlogApp
-from aldryn_newsblog.models import Article, NewsBlogConfig
+# Changed Article to ArticleContent, added ArticleGrouper
+from aldryn_newsblog.models import ArticleContent, ArticleGrouper, NewsBlogConfig
 
 
 TESTS_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -101,26 +102,69 @@ class NewsBlogTestsMixin:
         except KeyError:
             owner = author.user
 
-        fields = {
+        # Original fields for Article
+        original_fields = {
             'title': self.rand_str(),
             'slug': self.rand_str(),
             'author': author,
             'owner': owner,
             'app_config': self.app_config,
-            'publishing_date': now(),
-            'is_published': True,
+            'publishing_date': now(), # This will be ignored for ArticleContent
+            'is_published': True,   # This will be ignored for ArticleContent
+        }
+        original_fields.update(kwargs)
+
+        # FIXME: This method needs complete rework for the ArticleGrouper/ArticleContent structure.
+        # The following is a temporary adaptation to make makemigrations pass,
+        # IT WILL NOT WORK FOR RUNNING ACTUAL TESTS.
+
+        # 1. Create or get the ArticleGrouper
+        # Extract fields relevant for ArticleGrouper
+        grouper_kwargs = {
+            'app_config': original_fields.get('app_config', self.app_config), # Fallback to self.app_config
+            'owner': original_fields.get('owner', owner),
+            'author': original_fields.get('author', author),
+            # serial and episode would also go here if needed
+        }
+        # Ensure app_config is not None, which can happen if self.app_config is not set
+        if not grouper_kwargs['app_config']:
+            # This is a fallback, ideally app_config should always be valid in tests
+            if NewsBlogConfig.objects.exists():
+                grouper_kwargs['app_config'] = NewsBlogConfig.objects.first()
+            else:
+                # Cannot proceed if no app_config, this test helper is fundamentally broken without proper setup
+                raise ValueError("Cannot create ArticleGrouper: app_config is missing and no default found.")
+
+        article_grouper, _ = ArticleGrouper.objects.get_or_create(
+            owner=grouper_kwargs['owner'],
+            app_config=grouper_kwargs['app_config'],
+            defaults=grouper_kwargs # a fuller set of defaults if creating
+        )
+
+        # 2. Create the ArticleContent, linking it to the grouper
+        article_content_fields = {
+            'title': original_fields.get('title'),
+            'slug': original_fields.get('slug'),
+            'article_grouper': article_grouper,
+            # Add any other fields from original_fields that are now on ArticleContent, e.g. is_featured
+            'is_featured': original_fields.get('is_featured', False),
+            # lead_in, meta fields etc. would be passed via kwargs if needed
         }
 
-        fields.update(kwargs)
+        # Filter kwargs to only include valid fields for ArticleContent
+        valid_content_field_names = {f.name for f in ArticleContent._meta.get_fields()}
+        for key, value in kwargs.items():
+            if key in valid_content_field_names and key not in article_content_fields:
+                article_content_fields[key] = value
 
-        article = Article.objects.create(**fields)
-        # save again to calculate article search_data.
-        article.save()
+        article_content = ArticleContent.objects.create(**article_content_fields)
+        # search_data calculation happens on save in the model, if implemented
+        # article_content.save() # Already saved by create, unless search_data logic requires a second save.
 
         if content:
-            api.add_plugin(article.content, 'TextPlugin',
+            api.add_plugin(article_content.content, 'TextPlugin',
                            self.language, body=content)
-        return article
+        return article_content
 
     def create_tagged_articles(self, num_articles=3, tags=('tag1', 'tag2'),
                                **kwargs):
