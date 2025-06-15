@@ -8,6 +8,10 @@ from django.shortcuts import get_object_or_404
 from django.utils import translation
 from django.views.generic import ListView
 from django.views.generic.detail import DetailView
+from django.contrib.contenttypes.models import ContentType # Added for versioning queries
+from djangocms_versioning.models import Version # Added for versioning queries
+from djangocms_versioning.constants import PUBLISHED # Added for versioning queries
+from django.db.models import OuterRef, Subquery, Q # Added for subqueries, Q was already there
 
 from menus.utils import set_language_changer
 
@@ -67,9 +71,9 @@ class PreviewModeMixin(EditModeMixin):
         user = self.request.user
         user_can_edit = user.is_staff or user.is_superuser
         if not (self.edit_mode or user_can_edit):
-            # FIXME #VERSIONING: .published() needs to be replaced with versioning logic
-            # qs = qs.published()
-            pass # For now, show all if edit_mode or user_can_edit is false
+            # Relying on djangocms-versioning's default manager to filter for published versions.
+            # If user_can_edit or in edit_mode, versioning system may show drafts.
+            pass # No explicit filtering here if default manager is version-aware.
         language = translation.get_language()
         # FIXME #VERSIONING: .namespace() needs adjustment if it relied on Article structure.
         # It should now filter based on article_grouper.app_config.namespace.
@@ -170,36 +174,65 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
     def get_prev_object(self, queryset=None, object=None):
         if queryset is None:
             queryset = self.get_queryset()
+        if queryset is None:
+            queryset = self.get_queryset() # This queryset is of ArticleContent
         if object is None:
-            object = self.get_object(self) # object is ArticleContent
-        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
-        # This logic needs to compare version publication dates.
-        # For now, returning None as a placeholder.
-        # prev_objs = queryset.filter(
-        #     article_grouper__SOME_VERSION_FIELD__lt=object.article_grouper.SOME_VERSION_FIELD
-        # ).order_by(
-        #     '-article_grouper__SOME_VERSION_FIELD'
-        # )[:1]
-        # if prev_objs:
-        #     return prev_objs[0]
-        return None
+            object = self.get_object() # Current ArticleContent instance
+
+        try:
+            current_version = Version.objects.get_for_content(object)
+            if not current_version or not current_version.published:
+                return None # No published version for current object, so no prev/next
+            current_published_date = current_version.published
+        except Version.DoesNotExist:
+            return None # Should not happen for a displayed object
+
+        # Subquery to get the published date of a version for an ArticleContent
+        version_published_subquery = Version.objects.filter(
+            object_id=OuterRef('pk'),
+            content_type=ContentType.objects.get_for_model(ArticleContent),
+            state=PUBLISHED
+        ).values('published')[:1]
+
+        qs_with_version_date = queryset.annotate(
+            version_published_date=Subquery(version_published_subquery)
+        ).exclude(version_published_date__isnull=True) # Ensure we only consider items with a published version
+
+        prev_objs = qs_with_version_date.filter(
+            version_published_date__lt=current_published_date
+        ).order_by('-version_published_date')[:1]
+
+        return prev_objs[0] if prev_objs else None
 
     def get_next_object(self, queryset=None, object=None):
         if queryset is None:
             queryset = self.get_queryset()
         if object is None:
-            object = self.get_object(self) # object is ArticleContent
-        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
-        # This logic needs to compare version publication dates.
-        # For now, returning None as a placeholder.
-        # next_objs = queryset.filter(
-        #     article_grouper__SOME_VERSION_FIELD__gt=object.article_grouper.SOME_VERSION_FIELD
-        # ).order_by(
-        #     'article_grouper__SOME_VERSION_FIELD'
-        # )[:1]
-        # if next_objs:
-        #     return next_objs[0]
-        return None
+            object = self.get_object()
+
+        try:
+            current_version = Version.objects.get_for_content(object)
+            if not current_version or not current_version.published:
+                return None
+            current_published_date = current_version.published
+        except Version.DoesNotExist:
+            return None
+
+        version_published_subquery = Version.objects.filter(
+            object_id=OuterRef('pk'),
+            content_type=ContentType.objects.get_for_model(ArticleContent),
+            state=PUBLISHED
+        ).values('published')[:1]
+
+        qs_with_version_date = queryset.annotate(
+            version_published_date=Subquery(version_published_subquery)
+        ).exclude(version_published_date__isnull=True)
+
+        next_objs = qs_with_version_date.filter(
+            version_published_date__gt=current_published_date
+        ).order_by('version_published_date')[:1]
+
+        return next_objs[0] if next_objs else None
 
 
 class ArticleListBase(AppConfigMixin, AppHookCheckMixin, TemplatePrefixMixin,
@@ -394,14 +427,26 @@ class TagArticleList(ArticleListBase):
 class DateRangeArticleList(ArticleListBase):
     """A list of articles for a specific date range"""
     def get_queryset(self):
-        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
-        # This requires filtering based on Version object's publication date.
-        # This is a placeholder and will likely not work as intended.
-        # return super().get_queryset().filter(
-        #     article_grouper__SOME_VERSION_FIELD__gte=self.date_from, # Placeholder
-        #     article_grouper__SOME_VERSION_FIELD__lt=self.date_to  # Placeholder
-        # )
-        return super().get_queryset().none() # Safest placeholder for now
+        qs = super().get_queryset() # Base queryset of ArticleContent
+
+        # FIXME #VERSIONING: This assumes super().get_queryset() ALREADY filters by published state
+        # due to djangocms-versioning's default manager. If not, this needs to be more robust.
+        # The filtering here is specifically for the date range based on the Version's published field.
+
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+        # Subquery to find object_ids of ArticleContent that have a published version within the date range.
+        # Using .values('object_id') and distinct based on typical versioning patterns.
+        version_object_ids_in_range = Version.objects.filter(
+            content_type=content_type,
+            state=PUBLISHED, # Ensure we are looking at the published version's date
+            published__gte=self.date_from,
+            published__lt=self.date_to
+        ).values_list('object_id', flat=True).distinct()
+
+        # Filter the main queryset to include only those ArticleContent items.
+        qs = qs.filter(pk__in=Subquery(version_object_ids_in_range)) # Using Subquery directly on values_list
+
+        return qs
 
     def _daterange_from_kwargs(self, kwargs):
         raise NotImplementedError('Subclasses of DateRangeArticleList need to'

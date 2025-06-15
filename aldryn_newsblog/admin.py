@@ -15,6 +15,10 @@ from parler.admin import TranslatableAdmin
 from parler.forms import TranslatableModelForm
 
 from . import models
+from .models import ArticleGrouper # Ensure ArticleGrouper is imported
+
+from cms.admin.utils import GrouperModelAdmin
+from djangocms_versioning.admin import ExtendedGrouperVersionAdminMixin, StateIndicatorMixin, ExtendedVersionAdminMixin
 
 
 def make_published(modeladmin, request, queryset):
@@ -92,41 +96,58 @@ class ArticleAdminForm(TranslatableModelForm):
         # Thus, direct manipulation of self.fields['app_config'] or self.fields['author'] is removed here.
 
 
+@admin.register(ArticleGrouper)
+class ArticleGrouperAdmin(ExtendedGrouperVersionAdminMixin, StateIndicatorMixin, GrouperModelAdmin):
+    list_display = [
+        '__str__',
+        'author',
+        'app_config',
+        'state_indicator', # From StateIndicatorMixin
+        'serial',
+        'episode',
+    ]
+    list_filter = [
+        'app_config',
+        'author',
+        'serial',
+    ]
+    search_fields = ['author__name', 'serial__name', 'translations__title'] # Example, assuming title on content
+
+
 @admin.register(models.ArticleContent) # Changed from models.Article and ArticleAdmin
 class ArticleContentAdmin( # Renamed from ArticleAdmin
+    ExtendedVersionAdminMixin, # Added
     AllTranslationsMixin,
     PlaceholderAdminMixin,
     FrontendEditableAdminMixin,
-    ModelAppHookConfig,
+    # ModelAppHookConfig, # Commented out as app_config is on grouper
     TranslatableAdmin
 ):
     form = ArticleAdminForm
-    # Updated list_display: removed app_config, is_published. Added article_grouper related fields.
-    list_display = ('title', 'slug', 'is_featured_display', 'article_grouper_app_config_display', 'language_column')
-    # Updated list_filter: use fields from ArticleGrouper. Removed publishing_date.
-    list_filter = (
-        'article_grouper__app_config',
-        'categories',
-        'is_featured', # is_featured is on ArticleContent
-        'article_grouper__author', # Author is on grouper
-    )
-    # actions related to is_published are removed as this is handled by versioning.
-    # is_featured actions can remain if is_featured is managed independently.
-    actions = (
-        make_featured, make_not_featured,
-        # make_published, make_unpublished, # Removed
-    )
-    # date_hierarchy = 'publishing_date' # Removed
+    # list_display, list_filter, and actions are typically managed by ExtendedVersionAdminMixin
+    # or are less relevant for a version edit screen.
+    # Commenting them out for now.
+    # list_display = ('title', 'slug', 'is_featured_display', 'article_grouper_app_config_display', 'language_column')
+    # list_filter = (
+    #     'article_grouper__app_config',
+    #     'categories',
+    #     'is_featured',
+    #     'article_grouper__author',
+    # )
+    # actions = (
+    #     make_featured, make_not_featured,
+    # )
 
-    # Updated fieldsets:
+    # fieldsets define the edit view for a version (ArticleContent)
     fieldsets = (
         (None, {
             'fields': (
-                'article_grouper', # Link to the grouper
+                # 'article_grouper', # Should NOT be editable here; it's fixed for a version.
+                                   # ExtendedVersionAdminMixin handles this link.
                 'title',
-                'is_featured', # is_featured is on ArticleContent
+                'is_featured',
                 'lead_in',
-                # 'content', # PlaceholderField usually handled by PlaceholderAdminMixin separately
+                # 'content', # PlaceholderField handled by PlaceholderAdminMixin
             )
         }),
         (_('Meta Options'), {
@@ -143,44 +164,21 @@ class ArticleContentAdmin( # Renamed from ArticleAdmin
             'fields': (
                 'tags',
                 'categories',
-                'related', # related now points to ArticleGrouper
+                'related',
                 'featured_image',
             )
         }),
     )
     filter_horizontal = [
         'categories',
-        # 'related', # SortedManyToManyField might not work well with filter_horizontal by default with groupers
+        'related', # related pointing to ArticleGrouper might work here.
     ]
-    # app_config_values: 'is_published' removed. This needs review with versioning.
-    # app_config_values = {
-    #     'default_published': 'is_published' # This is no longer valid
-    # }
-    app_config_selection_title = '' # These might be fine if ModelAppHookConfig is still used by grouper admin
-    app_config_selection_desc = ''
 
-    def article_grouper_app_config_display(self, obj):
-        if obj.article_grouper:
-            return obj.article_grouper.app_config
-        return None
-    article_grouper_app_config_display.short_description = _('App Config')
-    article_grouper_app_config_display.admin_order_field = 'article_grouper__app_config'
-
-    def is_featured_display(self, obj): # Renamed to avoid conflict if base class has it
-        return obj.is_featured
-    is_featured_display.short_description = _('Is Featured')
-    is_featured_display.boolean = True
-    is_featured_display.admin_order_field = 'is_featured'
-
-
-    # add_view: Pre-filling author/owner is now relevant for ArticleGrouper, not ArticleContent.
-    # This method might need to be removed or adapted if ArticleContent is created inline with ArticleGrouper.
-    # For a standalone ArticleContent admin, pre-filling these doesn't make sense as they are on the grouper.
-    # def add_view(self, request, *args, **kwargs):
-    #     data = request.GET.copy()
-    #     # Logic for author and owner pre-fill removed
-    #     return super().add_view(request, *args, **kwargs)
-
+    # Remove methods specific to the old list display or ModelAppHookConfig if it was removed.
+    # The display methods like 'article_grouper_app_config_display' are for list_display.
+    # 'add_view' might not be directly used if versions are created via grouper admin.
+    # 'get_view_on_site_url' is useful and ExtendedVersionAdminMixin might provide its own or enhance this.
+    # For now, keeping get_view_on_site_url as it might still be relevant for viewing a specific version.
     def get_view_on_site_url(self, obj=None) -> Optional[str]:
         if obj is not None:
             try:

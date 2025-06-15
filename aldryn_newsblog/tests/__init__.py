@@ -99,71 +99,68 @@ class NewsBlogTestsMixin:
             author = self.create_person()
         try:
             owner = kwargs['owner']
-        except KeyError:
-            owner = author.user
+        # Determine owner for the grouper: use 'owner' from kwargs, or current user, or create one.
+        # The 'user' argument to create_article in original tests often meant the creator/owner.
+        _owner = kwargs.pop('owner', None)
+        if not _owner:
+            if hasattr(self, 'user') and self.user.is_authenticated: # self.user from CMSTestCase
+                _owner = self.user
+            else: # Fallback to creating a new user
+                _owner = self.create_user(is_staff=True, is_superuser=True)
 
-        # Original fields for Article
-        original_fields = {
-            'title': self.rand_str(),
-            'slug': self.rand_str(),
-            'author': author,
-            'owner': owner,
-            'app_config': self.app_config,
-            'publishing_date': now(), # This will be ignored for ArticleContent
-            'is_published': True,   # This will be ignored for ArticleContent
-        }
-        original_fields.update(kwargs)
+        # Determine author for the grouper
+        _author = kwargs.pop('author', None)
+        if not _author:
+            # If owner has a person object, use that, otherwise create one.
+            try:
+                _author = Person.objects.get(user=_owner)
+            except Person.DoesNotExist:
+                _author = self.create_person(user=_owner) # create_person now accepts user
 
-        # FIXME: This method needs complete rework for the ArticleGrouper/ArticleContent structure.
-        # The following is a temporary adaptation to make makemigrations pass,
-        # IT WILL NOT WORK FOR RUNNING ACTUAL TESTS.
+        _app_config = kwargs.pop('app_config', self.app_config) # Use self.app_config if available
+        _language = kwargs.pop('language', getattr(self, 'language', settings.LANGUAGES[0][0]))
+        _title = kwargs.pop('title', self.rand_str(prefix="Test Article "))
 
-        # 1. Create or get the ArticleGrouper
-        # Extract fields relevant for ArticleGrouper
-        grouper_kwargs = {
-            'app_config': original_fields.get('app_config', self.app_config), # Fallback to self.app_config
-            'owner': original_fields.get('owner', owner),
-            'author': original_fields.get('author', author),
-            # serial and episode would also go here if needed
-        }
-        # Ensure app_config is not None, which can happen if self.app_config is not set
-        if not grouper_kwargs['app_config']:
-            # This is a fallback, ideally app_config should always be valid in tests
-            if NewsBlogConfig.objects.exists():
-                grouper_kwargs['app_config'] = NewsBlogConfig.objects.first()
-            else:
-                # Cannot proceed if no app_config, this test helper is fundamentally broken without proper setup
-                raise ValueError("Cannot create ArticleGrouper: app_config is missing and no default found.")
-
-        article_grouper, _ = ArticleGrouper.objects.get_or_create(
-            owner=grouper_kwargs['owner'],
-            app_config=grouper_kwargs['app_config'],
-            defaults=grouper_kwargs # a fuller set of defaults if creating
+        # Grouper specific kwargs can be passed in via 'grouper_kwargs'
+        grouper_extra_kwargs = kwargs.pop('grouper_kwargs', {})
+        grouper = ArticleGrouper.objects.create(
+            owner=_owner,
+            author=_author,
+            app_config=_app_config,
+            **grouper_extra_kwargs
         )
 
-        # 2. Create the ArticleContent, linking it to the grouper
-        article_content_fields = {
-            'title': original_fields.get('title'),
-            'slug': original_fields.get('slug'),
-            'article_grouper': article_grouper,
-            # Add any other fields from original_fields that are now on ArticleContent, e.g. is_featured
-            'is_featured': original_fields.get('is_featured', False),
-            # lead_in, meta fields etc. would be passed via kwargs if needed
+        # Remaining kwargs are for ArticleContent.
+        # Pop fields that are not on ArticleContent or are handled separately.
+        kwargs.pop('publishing_date', None) # Handled by versioning
+        kwargs.pop('is_published', None)    # Handled by versioning
+
+        # Create the initial ArticleContent (this will be the DRAFT version)
+        content_fields = {
+            'article_grouper': grouper,
+            'is_featured': kwargs.pop('is_featured', False), # Example direct field
+            # Any other direct fields for ArticleContent can be set from kwargs here
         }
-
-        # Filter kwargs to only include valid fields for ArticleContent
-        valid_content_field_names = {f.name for f in ArticleContent._meta.get_fields()}
+        # Add remaining kwargs that are valid for ArticleContent
+        valid_content_field_names = {f.name for f in ArticleContent._meta.get_fields() if f.name not in ['translations', 'pk', 'id']}
         for key, value in kwargs.items():
-            if key in valid_content_field_names and key not in article_content_fields:
-                article_content_fields[key] = value
+            if key in valid_content_field_names:
+                content_fields[key] = value
 
-        article_content = ArticleContent.objects.create(**article_content_fields)
-        # search_data calculation happens on save in the model, if implemented
-        # article_content.save() # Already saved by create, unless search_data logic requires a second save.
+        article_content = ArticleContent(**content_fields)
 
-        if content:
+        # Set translated fields
+        article_content.set_current_language(_language)
+        article_content.title = _title
+        article_content.slug = kwargs.get('slug', None) # Allow passing slug, or let auto-slug work
+        article_content.lead_in = kwargs.get('lead_in', '')
+        # ... other translated fields can be added from kwargs similarly ...
+
+        article_content.save() # This creates the draft version and translations
+
+        if content: # 'content' here refers to placeholder content string
             api.add_plugin(article_content.content, 'TextPlugin',
-                           self.language, body=content)
+                           _language, body=content)
         return article_content
 
     def create_tagged_articles(self, num_articles=3, tags=('tag1', 'tag2'),
