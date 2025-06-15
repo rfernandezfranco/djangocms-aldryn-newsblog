@@ -9,7 +9,7 @@ class NewsBlogVersioningConfig(CMSAppConfig):
     djangocms_versioning_enabled = True
     versioning = [
         VersionableItem(
-            content_model=Article.translations.model,
+            content_model=Article._parler_meta.root_model,
             grouper_field_name="master",
             extra_grouping_fields=["language_code"],
             copy_function=default_copy,
