@@ -29,6 +29,9 @@ Installation & Updates
 Please head over to our `documentation`_ for all the details on how to install,
 configure and use Aldryn News & Blog.
 
+The application supports ``djangocms-versioning`` so articles can be drafted,
+reviewed and published through the standard versioning workflow.
+
 You can also find instructions on `how to upgrade`_ from earlier versions.
 
 .. _documentation: http://aldryn-newsblog.readthedocs.io/en/latest/
