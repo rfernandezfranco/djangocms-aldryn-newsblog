@@ -98,6 +98,7 @@ class ArticleAdminForm(TranslatableModelForm):
 
 @admin.register(ArticleGrouper)
 class ArticleGrouperAdmin(ExtendedGrouperVersionAdminMixin, StateIndicatorMixin, GrouperModelAdmin):
+    content_model = models.ArticleContent # Explicitly set the content model
     list_display = [
         '__str__',
         'author',

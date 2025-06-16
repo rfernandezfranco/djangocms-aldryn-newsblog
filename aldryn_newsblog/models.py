@@ -134,7 +134,7 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             help_text=_(
                 'Used in the URL. If changed, the URL will change. '
                 'Clear it to have it re-created automatically.'),
-            unique=True, # Make slug unique per language again
+            unique=False, # Unique per language AND grouper is handled by meta
         ),
         lead_in=HTMLField(
             verbose_name=_('lead'), default='',
@@ -152,7 +152,7 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             verbose_name=_('meta description'), blank=True, default=''),
         meta_keywords=models.TextField(
             verbose_name=_('meta keywords'), blank=True, default=''),
-        # meta={'unique_together': (('language_code', 'article_grouper', 'slug',),)}, # Moved to main Meta
+        meta={'unique_together': (('language_code', 'master', 'slug'),)},
 
         search_data=models.TextField(blank=True, editable=False)
     )

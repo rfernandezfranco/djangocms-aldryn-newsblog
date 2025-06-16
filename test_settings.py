@@ -72,12 +72,17 @@ HELPER_SETTINGS = {
     'CMS_CONFIRM_VERSION4': True,
     'CMS_PERMISSION': True,
     # 'CMS_CONFIRM_VERSION4': True,
+    'CMS_TEMPLATES': [ # Added CMS_TEMPLATES setting
+        ('page.html', 'Page'),
+    ],
     'SITE_ID': 1,
+    'LANGUAGE_CODE': 'en', # Added to match 'en' in LANGUAGES
     'LANGUAGES': (
         ('en', 'English'),
         ('de', 'German'),
         ('fr', 'French'),
     ),
+    'ROOT_URLCONF': 'aldryn_newsblog.urls', # Added ROOT_URLCONF
     'CMS_LANGUAGES': {
         1: [
             {

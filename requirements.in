@@ -1,3 +1,5 @@
 djangocms-aldryn-newsblog
 django-cms~=4.1
 djangocms-versioning
+selenium<5
+httpx

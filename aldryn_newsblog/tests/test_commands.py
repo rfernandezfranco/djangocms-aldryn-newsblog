@@ -1,7 +1,8 @@
 from django.core.management import call_command
 from django.utils.translation import activate
 
-from aldryn_newsblog.models import Article
+from aldryn_newsblog.models import ArticleContent
+from djangocms_versioning.models import Version
 
 from . import NewsBlogTestCase
 
@@ -9,24 +10,29 @@ from . import NewsBlogTestCase
 class TestCommands(NewsBlogTestCase):
 
     def test_rebuild_search_data_command(self):
-        # Just make sure we have a known language
         activate(self.language)
+        article_content_draft = self.create_article(title="Command Test Article Search Data")
 
-        article = self.create_article()
+        if not hasattr(self, 'staff_user'):
+            self.staff_user = self.create_user(is_staff=True, is_superuser=True, username="cmd_test_publisher")
 
-        search_data = article.get_search_data(language=self.language)
+        version = Version.objects.get_for_content(article_content_draft)
+        # Changed to use instance method
+        version.publish(self.staff_user)
+        article_content_published = version.content # content object might be replaced
 
-        # make sure the search_data is empty
-        # we avoid any handler that automatically sets the search_data
-        article.translations.filter(
-            language_code=self.language).update(search_data='')
+        expected_search_data = article_content_published.get_search_data(language=self.language)
 
-        # get fresh article from db
-        article = Article.objects.language(self.language).get(pk=article.pk)
+        translation_obj = article_content_published.translations.get(language_code=self.language)
+        translation_obj.search_data = ''
+        translation_obj.save(update_fields=['search_data'])
 
-        # make sure search data is empty
-        self.assertEqual(article.search_data, '')
-        # now run the command
+        fresh_article_content = ArticleContent.objects.language(self.language).get(pk=article_content_published.pk)
+        self.assertEqual(fresh_article_content.safe_get_translation(self.language).search_data, '', "Search data should be empty before command run.")
+
         call_command('rebuild_article_search_data', languages=[self.language])
-        # now verify the article's search_data has been updated.
-        self.assertEqual(article.search_data, search_data)
+
+        fresh_article_content.refresh_from_db()
+        updated_translation = fresh_article_content.translations.get(language_code=self.language)
+        self.assertEqual(updated_translation.search_data, expected_search_data,
+                         "Search data was not rebuilt correctly by the command.")

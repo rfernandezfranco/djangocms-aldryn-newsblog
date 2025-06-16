@@ -93,14 +93,7 @@ class NewsBlogTestsMixin:
             user=self.create_user(), slug=self.rand_str())
 
     def create_article(self, content=None, **kwargs):
-        try:
-            author = kwargs['author']
-        except KeyError:
-            author = self.create_person()
-        try:
-            owner = kwargs['owner']
-        # Determine owner for the grouper: use 'owner' from kwargs, or current user, or create one.
-        # The 'user' argument to create_article in original tests often meant the creator/owner.
+        # Determine owner for the grouper
         _owner = kwargs.pop('owner', None)
         if not _owner:
             if hasattr(self, 'user') and self.user.is_authenticated: # self.user from CMSTestCase
@@ -111,11 +104,13 @@ class NewsBlogTestsMixin:
         # Determine author for the grouper
         _author = kwargs.pop('author', None)
         if not _author:
-            # If owner has a person object, use that, otherwise create one.
+            # If an explicit author (Person instance) is not passed,
+            # try to find a Person linked to the _owner.
+            # If not found, create a new Person (which also creates a new User for that Person via self.create_person()).
             try:
                 _author = Person.objects.get(user=_owner)
             except Person.DoesNotExist:
-                _author = self.create_person(user=_owner) # create_person now accepts user
+                _author = self.create_person()
 
         _app_config = kwargs.pop('app_config', self.app_config) # Use self.app_config if available
         _language = kwargs.pop('language', getattr(self, 'language', settings.LANGUAGES[0][0]))
@@ -157,6 +152,15 @@ class NewsBlogTestsMixin:
         # ... other translated fields can be added from kwargs similarly ...
 
         article_content.save() # This creates the draft version and translations
+
+        # Explicitly create a version if one doesn't exist (diagnostic/workaround)
+        from djangocms_versioning.models import Version
+        from djangocms_versioning.constants import DRAFT
+        from django.contrib.contenttypes.models import ContentType
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+        if not Version.objects.filter(content_type=content_type, object_id=article_content.pk).exists():
+            # Removed 'label' kwarg as it's not a valid field for Version model
+            Version.objects.create(content=article_content, created_by=_owner, state=DRAFT)
 
         if content: # 'content' here refers to placeholder content string
             api.add_plugin(article_content.content, 'TextPlugin',
@@ -226,9 +230,11 @@ class NewsBlogTestsMixin:
         return request
 
     def setUp(self):
-        self.template = get_cms_setting('TEMPLATES')[0][0]
+        self.template = 'page.html' # Explicitly use the created test template
         self.language = settings.LANGUAGES[0][0]
-        self.user, _ = get_user_model().objects.get_or_create(username="python-api")
+        # Use create_user to avoid potential IntegrityError with get_or_create in some test cases
+        self.user = self.create_user(username="testmixin_user", is_staff=True, is_superuser=False) # Basic user for most tests
+
         self.root_page = api.create_page(
             'root page',
             self.template,
