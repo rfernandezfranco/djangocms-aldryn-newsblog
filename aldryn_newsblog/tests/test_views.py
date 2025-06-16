@@ -784,14 +784,15 @@ class TestVariousViews(NewsBlogTestCase):
         if not hasattr(self, 'staff_user'):
             self.staff_user = self.create_user(is_staff=True, is_superuser=True, username='count_tags_publisher')
 
-        # FIXME #VERSIONING: ArticleContent.objects.get_tags needs to be versioning-aware.
-        # This test is DEFERRED for versioning adaptation due to complexity of querying
-        # Taggit's GenericForeignKey relations along with djangocms-versioning's Version model.
-        # A robust, versioning-aware replacement for `get_tags` is required.
-        initial_tags = ArticleContent.objects.get_tags(
-            request=None, namespace=self.app_config.namespace
-        )
-        self.assertEqual(initial_tags, [])
+        # The get_tags method is now on the plugin instance.
+        # We need to simulate a plugin instance or test its logic more directly.
+        from aldryn_newsblog.models import NewsBlogTagsPlugin # Import the plugin model
+        from django.utils.text import slugify
+
+        plugin_instance = NewsBlogTagsPlugin(app_config=self.app_config)
+        # The request object might be needed if get_edit_mode is used, but current get_tags doesn't use it.
+        initial_tags = plugin_instance.get_tags(request=self.get_request())
+        self.assertEqual(list(initial_tags), [], "Initially, there should be no tags with published articles.")
 
         # Create some untagged articles (published, but won't be counted by tag)
         for i in range(5):
@@ -829,19 +830,33 @@ class TestVariousViews(NewsBlogTestCase):
             (tag_slug1, 3),
         ], key=lambda x: (-x[1], x[0])) # Sort by count desc, then slug asc
 
-        # FIXME #VERSIONING: ArticleContent.objects.get_tags needs to be versioning-aware.
-        # This test is DEFERRED. See above.
-        # It should count published articles for each tag.
-        tags_from_method = ArticleContent.objects.get_tags(
-            request=None, namespace=self.app_config.namespace
-        )
-        # Assuming get_tags returns a list of Taggit Tag objects annotated with 'num_articles'
+        # Call the plugin's get_tags method
+        # The request object might not be strictly necessary if get_edit_mode is not used by the refined get_tags
+        tags_from_plugin = plugin_instance.get_tags(request=self.get_request())
+
         actual_tags_summary = sorted(
-            [(tag.slug, tag.num_articles) for tag in tags_from_method if tag.num_articles > 0],
-            key=lambda x: (-x[1], x[0]) # Sort by count desc, then slug asc
+            [(tag.slug, tag.num_articles) for tag in tags_from_plugin if hasattr(tag, 'num_articles') and tag.num_articles > 0],
+            key=lambda x: (-x[1], x[0]) # Sort by count desc, then slug asc (matching expected)
         )
-        self.assertEqual(actual_tags_summary, tags_expected,
-                         "Tagged article counts do not match. get_tags may need versioning adaptation.")
+
+        # Note: The expected_tags generation might need adjustment based on how create_tagged_articles works
+        # and if it correctly uses versioning_api.publish for the articles intended to be live.
+        # The original `tags_expected` was:
+        # tags_expected = sorted([
+        # (tag_slug2, 5), # Assuming tag_slug2 corresponds to tag_names[2]
+        # (tag_slug1, 3), # Assuming tag_slug1 corresponds to tag_names[1]
+        # ], key=lambda x: (-x[1], x[0]))
+        # We need to ensure tag_slug1 and tag_slug2 are correctly derived from the published articles.
+        # For simplicity, if tag_names are 'tag_count_foo', 'tag_count_bar', 'tag_count_buzz',
+        # and 'foo' is unpublished, 'bar' has 3 published, 'buzz' has 5 published:
+        expected_tags_final = sorted([
+            (slugify(tag_names[2]), 5), # buzz
+            (slugify(tag_names[1]), 3), # bar
+        ], key=lambda x: (-x[1], x[0]))
+
+
+        self.assertEqual(actual_tags_summary, expected_tags_final,
+                         "Tagged article counts (versioning aware) do not match expected values.")
 
     def test_articles_by_date(self):
         if not hasattr(self, 'staff_user'):

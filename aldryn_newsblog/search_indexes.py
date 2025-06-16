@@ -46,12 +46,23 @@ class ArticleIndex(get_index_base()):
 
     def get_index_queryset(self, language):
         queryset = super().get_index_queryset(language)
-        # FIXME #VERSIONING: Haystack RealtimeSignalProcessor (if used) needs to be versioning-aware.
-        # It should ideally update the index only when a Version is published, unpublished, or a
-        # published version's content is deleted. This might require custom signal handlers
-        # connected to djangocms_versioning's signals, or disabling Haystack's default
-        # auto-update for ArticleContent and manually triggering reindex on versioning events.
-        # The queryset below now filters for currently published content.
+        # FIXME #VERSIONING: Haystack's RealtimeSignalProcessor (if used for ArticleContent)
+        # will not inherently understand the djangocms-versioning lifecycle. Saving an
+        # ArticleContent draft would trigger reindexing of that draft's content (if not filtered out by
+        # `should_update` or `index_queryset`), while publishing/unpublishing events
+        # (which change the Version state and what `index_queryset` returns) might not trigger
+        # the correct add/remove operations in the index for the specific content version.
+        # Ideal Solution:
+        # 1. Consider disabling Haystack's automatic RealtimeSignalProcessor for the ArticleContent model
+        #    if it causes incorrect indexing during draft saves.
+        # 2. Implement custom signal handlers that listen to djangocms-versioning's
+        #    signals (e.g., `version_published`, `version_unpublished`, `version_archived`, `version_deleted`).
+        # 3. These handlers should then manually call Haystack's index update methods:
+        #    - On `version_published`: `SearchIndex().update_object(version.content, using=using)`
+        #    - On `version_unpublished` / `version_archived`: `SearchIndex().remove_object(version.content, using=using)`
+        #    - On `version_deleted` (if the content object is deleted with the version): `SearchIndex().remove_object(version.content, using=using)`
+        # This ensures the search index accurately reflects the versioned state of published content.
+        # The `index_queryset` below now correctly filters for currently published content for manual indexing runs.
 
         from django.contrib.contenttypes.models import ContentType
         from djangocms_versioning.constants import PUBLISHED

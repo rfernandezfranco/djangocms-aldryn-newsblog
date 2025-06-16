@@ -32,29 +32,11 @@ class TestModels(NewsBlogTestCase):
         version = versions.first()
         self.assertEqual(version.state, DRAFT)
 
-        # FIXME #VERSIONING: How to test viewing a draft?
-        # Direct client.get(draft_content.get_absolute_url()) might not be appropriate
-        # as drafts are usually not publicly viewable without specific preview mechanisms.
-        # For now, commenting out the view part of this specific model test.
-        # response = self.client.get(draft_content.get_absolute_url())
-class TestModels(NewsBlogTestCase):
+        # Assert that get_absolute_url() for a draft returns None
+        self.assertIsNone(draft_content.get_absolute_url(),
+                          "get_absolute_url for a new draft should return None.")
 
-    def test_create_article(self):
-        # This test now verifies the creation of a DRAFT ArticleContent
-        draft_content = self.create_article(title="Test Create Article Draft")
-        self.assertIsNotNone(draft_content.pk)
-
-        versions = Version.objects.filter_by_content(draft_content)
-        self.assertEqual(versions.count(), 1)
-        version = versions.first()
-        self.assertEqual(version.state, DRAFT)
-
-        # FIXME #VERSIONING: How to test viewing a draft?
-        # Direct client.get(draft_content.get_absolute_url()) might not be appropriate
-        # as drafts are usually not publicly viewable without specific preview mechanisms.
-        # For now, commenting out the view part of this specific model test.
-        # response = self.client.get(draft_content.get_absolute_url())
-        # self.assertContains(response, draft_content.title)
+# Removed duplicate class definition that was here.
 
     def test_delete_article(self):
         # Create a draft, then publish it
@@ -62,28 +44,35 @@ class TestModels(NewsBlogTestCase):
         version = Version.objects.get_for_content(draft_content)
 
         publisher = draft_content.article_grouper.owner
-        if not publisher.is_staff: # Ensure publisher has rights
+        if not hasattr(publisher, 'is_staff') or not publisher.is_staff: # Ensure publisher has rights
              publisher.is_staff = True
              publisher.is_superuser = True # Make superuser for all perms
              publisher.save()
 
         published_version = versioning_api.publish(version, publisher)
-        published_content = published_version.content
+        published_content = published_version.content # This is still draft_content, but now its version is PUBLISHED
 
-        # FIXME #VERSIONING: get_absolute_url for versioned content needs proper handling of publication dates
-        # published_url = published_content.get_absolute_url(language=self.language)
-        # if published_url:  # Only proceed if URL is resolvable
-        #     response = self.client.get(published_url)
-        #     self.assertEqual(response.status_code, 200)
-        #     self.assertContains(response, published_content.title)
+        # Get URL while it's published
+        published_url = published_content.get_absolute_url(language=self.language)
+        self.assertIsNotNone(published_url, "URL should exist for published content.")
+
+        response = self.client.get(published_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, published_content.title)
 
         # Unpublish it
         versioning_api.unpublish(published_version, publisher)
+        published_version.refresh_from_db() # State is now ARCHIVED or UNPUBLISHED
 
-        # FIXME #VERSIONING: After unpublish, accessing the URL should ideally result in 404.
-        # if published_url:
-        #     response_after_unpublish = self.client.get(published_url)
-        #     self.assertEqual(response_after_unpublish.status_code, 404)
+        # After unpublish, get_absolute_url should return None for this specific content object
+        # as its corresponding version is no longer 'PUBLISHED'.
+        self.assertIsNone(published_content.get_absolute_url(language=self.language),
+                          "get_absolute_url after unpublish should return None.")
+
+        # The previously obtained URL should now result in a 404 (or redirect if site has complex routing for old URLs)
+        # For simplicity, expecting 404 as the content is no longer "live" at that URL.
+        response_after_unpublish = self.client.get(published_url)
+        self.assertEqual(response_after_unpublish.status_code, 404)
 
         # Delete the grouper
         grouper_pk = published_content.article_grouper.pk
@@ -485,13 +474,21 @@ class TestArticleVersioning(NewsBlogTestCase):
 
         # Verify content is accessible via default manager (which should be published-aware)
         # This check depends on how default manager behaves after versioning is applied.
-        # If default manager shows only published, this should work.
-        # If it shows latest draft, then this check needs adjustment or use specific published manager.
-        # For now, assuming versioning correctly makes this accessible as it's published.
-        # FIXME #VERSIONING: Test this assumption carefully when versioning is fully integrated.
-        retrieved_content = ArticleContent.objects.filter(pk=draft_content.pk).first()
-        self.assertIsNotNone(retrieved_content, "Published content should be retrievable by default manager.")
-        self.assertEqual(retrieved_content.pk, draft_content.pk)
+        # Default manager for versioned models typically shows published versions on frontend,
+        # and might show latest (draft or published) in admin or other specific contexts.
+        # Here, we test if ArticleContent.objects.get() can find the published content.
+        try:
+            retrieved_content_via_default_mgr = ArticleContent.objects.get(pk=draft_content.pk)
+            self.assertIsNotNone(retrieved_content_via_default_mgr)
+            # Ensure the content retrieved is indeed linked to the published version state.
+            # This can be done by checking its version's state if needed, but get_for_content would be more direct.
+            retrieved_version = Version.objects.get_for_content(retrieved_content_via_default_mgr)
+            self.assertEqual(retrieved_version.state, PUBLISHED,
+                             "Content retrieved via default manager should be the one linked to a PUBLISHED version.")
+            self.assertEqual(retrieved_content_via_default_mgr.pk, draft_content.pk)
+        except ArticleContent.DoesNotExist:
+            self.fail("Published ArticleContent not found via default manager after publishing.")
+
 
         # Optional: Verify that trying to publish again raises an error
         with self.assertRaises(versioning_exceptions.AlreadyPublished): # Corrected from ConditionFailed if that's the specific error

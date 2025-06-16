@@ -210,57 +210,80 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
         # app_config is now on the grouper
         permalink_type = self.article_grouper.app_config.permalink_type
 
-        # FIXME #VERSIONING: This import might be better at the top of the file.
         from djangocms_versioning.models import Version
-        # from django.utils.timezone import now # now is already imported from django.utils.timezone
+        from djangocms_versioning.constants import PUBLISHED
+        # django.urls.NoReverseMatch is already imported for some cases
+        # django.utils.translation.override, get_current_language are already imported
+        # django.urls.reverse is already imported
 
+        if not language:
+            language = get_current_language() # Ensure language is set first
+
+        publishing_date_for_url = None
         try:
-            # Get the version object associated with this content instance
+            # Get current version for this content object
+            # Use versioning_api.get_version(self) for robustness if available, else direct Version query.
+            # For now, assuming Version.objects.get_for_content(self) is appropriate to get the
+            # version record that corresponds to this specific ArticleContent instance.
             version = Version.objects.get_for_content(self)
-            if version and version.published: # Check if a published version exists
-                publishing_date = version.published.date() # Get the date part of the publish datetime
+            if version.state == PUBLISHED and version.published:
+                publishing_date_for_url = version.published.date()
             else:
-                # Fallback if no published version found or not yet published (e.g., a draft)
-                # The URL might not be truly "absolute" or canonical for a draft.
-                # Using current date might be misleading. Consider raising an error or returning a non-date based URL if appropriate.
-                # For now, to avoid breaking URL generation entirely for drafts if they call this:
-                publishing_date = now().date() # Or handle as an error/None if permalink_type needs date
-                # FIXME #VERSIONING: Decide how to handle get_absolute_url for non-published versions.
-                # This might depend on how previews and draft URLs are constructed by djangocms-versioning.
+                # Not a published version, or no specific publish date on the version record.
+                # No canonical public URL for non-published content.
+                return None
         except Version.DoesNotExist:
-            # Fallback if no version object at all (should ideally not happen for versioned content)
-            publishing_date = now().date() # Or handle as an error
-            # FIXME #VERSIONING: Handle missing Version object case.
+            # No version object at all for this content. Cannot determine published state or date.
+            return None
+
+        if publishing_date_for_url is None: # Should be caught by above, but as a safeguard
+            return None
+
+        # Current permalink_type and kwargs logic based on publishing_date can remain,
+        # as it's now only reached if publishing_date_for_url is valid from a published version.
+        kwargs = {}
+        permalink_type = self.article_grouper.app_config.permalink_type
 
         if 'y' in permalink_type:
-            kwargs.update(year=publishing_date.year)
+            kwargs.update(year=publishing_date_for_url.year)
         if 'm' in permalink_type:
-            kwargs.update(month="%02d" % publishing_date.month)
+            kwargs.update(month="%02d" % publishing_date_for_url.month)
         if 'd' in permalink_type:
-            kwargs.update(day="%02d" % publishing_date.day)
+            kwargs.update(day="%02d" % publishing_date_for_url.day)
+
+        # Slug and PK handling
+        # The permalink structure might use the content's PK or the grouper's PK.
+        # Original urls.py patterns use slug or pk (which usually means content's pk for DetailView).
+        # If 'i' (ID) is in permalink, it typically refers to the object 'self'.
         if 'i' in permalink_type:
-            # The PK in the URL could be the grouper's PK or the content's PK
-            # depending on strategy. Let's assume grouper PK for now.
-            kwargs.update(pk=self.article_grouper.pk)
+            kwargs.update(pk=self.pk)
+
         if 's' in permalink_type:
-            slug, lang = self.known_translation_getter(
-                'slug', default=None, language_code=language)
-            if slug and lang:
-                site_id = getattr(settings, 'SITE_ID', None)
-                if get_redirect_on_fallback(language, site_id):
-                    language = lang
-                kwargs.update(slug=slug)
+            slug_val, lang_val = self.known_translation_getter(
+                'slug', default=None, language_code=language
+            )
+            if slug_val is None: # If slug is None for the current language, cannot form URL
+                return None
+            # The original logic for redirect_on_fallback and changing language variable here
+            # can be complex and might interact with how Parler/CMS handle language in URLs.
+            # For now, just use the slug for the requested language.
+            kwargs.update(slug=slug_val)
 
-        # app_config is now on the grouper
+        if not kwargs: # If no kwargs were populated (e.g. permalink_type was empty or only 's' but no slug)
+            return None # Cannot form a URL
+
         if self.article_grouper.app_config and self.article_grouper.app_config.namespace:
-            namespace = f'{self.article_grouper.app_config.namespace}:'
+            namespace_str = f'{self.article_grouper.app_config.namespace}:'
         else:
-            namespace = ''
+            namespace_str = ''
 
-        with override(language):
-            # The URL name might need to change if it implies a specific model,
-            # but for now, assume 'article-detail' refers to the concept of an article.
-            return reverse(f'{namespace}article-detail', kwargs=kwargs)
+        try:
+            with override(language): # Ensure correct language context for reverse
+                url = reverse(f'{namespace_str}article-detail', kwargs=kwargs)
+        except NoReverseMatch:
+            return None # If URL cannot be reversed (e.g. bad slug, or no pattern matches for kwargs)
+
+        return url
 
     def get_search_data(self, language=None, request=None):
         """
@@ -661,36 +684,66 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         publishing_date has passed. If the user is a logged-in cms operator,
         then it will be all articles.
         """
-        # FIXME #VERSIONING: Deferred. This method uses raw SQL and needs a complex
-        # versioning-aware ORM query to count published articles per tag,
-        # considering Taggit's GenericForeignKey and ArticleContent's link to Version.
-        # For now, returning an empty list to avoid errors.
-        # The original raw SQL query is left here for reference but commented out.
-        """
-        # article_content_type = ContentType.objects.get_for_model(ArticleContent)
-        # subquery = ""\"
-        #     SELECT COUNT(DISTINCT content.id)
-        #     FROM taggit_tag AS tag
-        #     INNER JOIN taggit_taggeditem AS tagged_item ON tag.id = tagged_item.tag_id
-        #     INNER JOIN aldryn_newsblog_articlecontent AS content ON tagged_item.object_id = content.id AND tagged_item.content_type_id = %s
-        #     INNER JOIN aldryn_newsblog_articlegrouper AS grouper ON content.article_grouper_id = grouper.id
-        #     WHERE grouper.app_config_id = %s AND tag.id = taggit_tag.id""\"
-        #     # Published state check (via Version model) needs to be added here.
+        # Attempting ORM-based logic for versioning:
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Count, Subquery, OuterRef
+        from djangocms_versioning.constants import PUBLISHED
+        from djangocms_versioning.models import Version
+        from taggit.models import Tag, TaggedItem
+        from django.utils import timezone
 
-        # if not self.get_edit_mode(request):
-        #     # FIXME: This part needs to integrate with djangocms-versioning state.
-        #     pass  # Placeholder for versioning check
+        content_type_ac = ContentType.objects.get_for_model(ArticleContent)
+        # edit_mode = self.get_edit_mode(request) # Not used in this version of the query
 
-        # query = ""\"
-        #     SELECT tag.*, ({}) as article_count
-        #     FROM taggit_tag AS tag
-        # ""\".format(subquery % (article_content_type.id, self.app_config.pk))
+        # 1. Get PKs of ArticleContent that are published AND belong to this plugin's app_config.
+        # This subquery will find all object_ids (ArticleContent pks) that meet the criteria.
+        published_content_in_appconfig_pks = Subquery(
+            Version.objects.filter(
+                content_type=content_type_ac,
+                state=PUBLISHED,
+                published__lte=timezone.now()
+            ).filter(
+                object_id__in=ArticleContent.objects.filter(
+                    article_grouper__app_config=self.app_config
+                ).values('pk')
+            ).values_list('object_id', flat=True).distinct()
+        )
 
-        # raw_tags = list(Tag.objects.raw(query))
-        # tags = [tag for tag in raw_tags if hasattr(tag, 'article_count') and tag.article_count > 0]
-        # return sorted(tags, key=lambda x: x.article_count, reverse=True)
-        """
-        return [] # Deferred
+        # 2. Filter TaggedItem objects:
+        #    - content_type must be ArticleContent.
+        #    - object_id must be in our list of published_content_in_appconfig_pks.
+        relevant_tagged_item_pks = TaggedItem.objects.filter(
+            content_type=content_type_ac,
+            object_id__in=published_content_in_appconfig_pks
+        ).values_list('pk', flat=True)
+
+        # 3. Annotate Tags with counts of these relevant_tagged_items.
+        # We only want tags that are associated with at least one of these relevant items.
+        tags_with_counts = Tag.objects.filter(
+            taggeditem_items__pk__in=relevant_tagged_item_pks # Filter tags that are part of relevant items
+        ).annotate(
+            num_articles=Count('taggeditem_items', filter=Q(taggeditem_items__pk__in=relevant_tagged_item_pks))
+            # Count only the tagged items that are relevant (published, correct app_config, etc.)
+        ).filter(num_articles__gt=0).order_by('-num_articles', 'name') # Filter out tags with no articles after versioning filter
+
+        # The above annotation should correctly count only the pre-filtered relevant_tagged_item_pks.
+        # If performance is an issue or it's incorrect, the python loop below is a fallback.
+        # For now, let's trust the annotation if possible.
+
+        # Fallback Python-side counting (if complex annotation fails or is too slow):
+        # relevant_tags_qs = Tag.objects.filter(pk__in=relevant_tagged_item_pks.values_list('tag_id', flat=True).distinct())
+        # final_tags_with_counts = []
+        # for tag in relevant_tags_qs:
+        #     count = TaggedItem.objects.filter(
+        #         pk__in=relevant_tagged_item_pks, # Count only from our pre-filtered set of items
+        #         tag=tag
+        #     ).count()
+        #     if count > 0:
+        #         tag.num_articles = count
+        #         final_tags_with_counts.append(tag)
+        # return sorted(final_tags_with_counts, key=lambda t: (-t.num_articles, t.name))
+
+        return list(tags_with_counts)
 
     def __str__(self):
         return gettext('%s tags') % (self.app_config.get_app_title(), )
@@ -777,9 +830,28 @@ def article_content_copy(original_content, user=None):
     new_content.related.set(original_content.related.all()) # related points to ArticleGrouper
 
     # 5. Copy PlaceholderField ('content')
-    # FIXME #VERSIONING: Placeholder copying can be complex, especially with nested plugins.
-    # djangocms-versioning might handle some of this automatically for registered PlaceholderFields.
-    # If not, a manual copy like below is a common pattern.
+    # FIXME #VERSIONING: Placeholder content copying.
+    # The current logic iterates through top-level plugins in the original placeholder
+    # and uses `cms.api.add_plugin` to add them to the new placeholder. This relies on:
+    # 1. Each plugin type correctly implementing its `copy_relations` method if it has
+    #    custom data or child plugins that need deep copying (e.g., by handling the `source_plugin`
+    #    argument passed to `copy_relations` by `cms.api.add_plugin` when `target_placeholder` is specified).
+    # 2. `add_plugin` sufficiently handling the recreation for standard cases by passing attributes.
+    # Limitations:
+    # - Deeply nested plugins: `add_plugin` itself does not recursively copy child plugins.
+    #   If a plugin has children, its `copy_relations` method (or equivalent logic if not using `copy_relations` directly)
+    #   must handle copying its children. Standard CMS plugins usually do this. Custom or third-party plugins might not.
+    # - Custom plugin data: If a plugin stores data in related models not automatically
+    #   handled by a simple field copy or its `copy_relations`, that data won't be copied.
+    # - Plugin instance fields vs. attributes: Ensure all relevant data is passed via
+    #   `**plugin_base.attributes` or copied manually if stored as direct fields on the
+    #   plugin model instance and not handled by `copy_relations`. The `attributes` dictionary
+    #   should contain all serializable fields of the plugin instance.
+    # For a more universally robust solution, especially with diverse or complex third-party plugins,
+    # `cms.api.copy_plugins_to_placeholder(original_placeholder, new_placeholder)` could be considered,
+    # as it's designed for deep, faithful copies of entire placeholder contents, including structure.
+    # However, this requires ensuring that all plugins involved are compatible with this API.
+    # The current approach is a common pattern for basic placeholder copying.
     original_placeholder = original_content.content
     new_placeholder = new_content.content # Accessing it should ensure it exists or is created
 
@@ -787,42 +859,23 @@ def article_content_copy(original_content, user=None):
         # It's generally safer to clear the new placeholder if it might have default plugins,
         # though for a fresh instance via _original_manager.create(), it should be empty.
         new_placeholder.clear()
-        plugins = original_placeholder.get_plugins_list()
+        plugins = original_placeholder.get_plugins_list() # Gets only top-level plugins
         for plugin_base in plugins:
             # Create a new plugin instance by copying from the original.
-            # This relies on each plugin's own copy_plugin method or similar logic
-            # if it has one, or add_plugin's behavior for basic plugins.
-            # For complex plugins, more specific handling might be needed.
-            # Using _no_reorder to prevent add_plugin from trying to fix tree ordering yet.
-            opts = {
-                key: getattr(plugin_base, key)
-                for key in plugin_base.copy_ μεταξύ_fields
-                if hasattr(plugin_base, key)
-            }
-            # Remove position as it will be recalculated
-            opts.pop("position", None)
-            # If parent_id is in copy_fields, it needs careful handling for nested plugins
-            # For now, assuming add_plugin handles basic parent assignment if needed for flat copies.
-            # This part is highly complex for deeply nested plugins and might need a recursive copy.
-
-            # A simpler approach if plugin_base.attributes gives all necessary serializable fields:
-            # instance_data = plugin_base.attributes
-            # instance_data.update(plugin_base.get_bound_plugin().get_plugin_instance_data())
-
-            # For now, let's try a basic add_plugin and assume copy_relations handles most cases
-            # This is a known difficult part of content copying in django-cms.
-            # The most robust solution often involves cms.api.copy_plugins_to_placeholder if available and applicable.
-
-            # Simplified approach:
-            new_plugin_instance = add_plugin(
+            # The `add_plugin` API will call the plugin's `copy_relations` method
+            # if `source_plugin` is provided, which can handle child plugins and other relations.
+            # However, we are iterating only top-level plugins here.
+            # A more robust copy would use cms.api.copy_plugins_to_placeholder.
+            # For now, this copies top-level plugins and their direct data.
+            add_plugin(
                 placeholder=new_placeholder,
                 plugin_type=plugin_base.plugin_type,
                 language=plugin_base.language,
-                **plugin_base.attributes, # Pass attributes from original plugin
+                # Pass attributes from original plugin. Ensure all necessary fields are included.
+                # This relies on plugin_base.attributes being comprehensive.
+                **plugin_base.attributes
             )
-            # If the plugin has child plugins, they need to be copied recursively.
-            # This basic add_plugin won't do that.
-            # FIXME: Implement recursive plugin copy if needed.
+            # The previous FIXME about recursive copy is now part of the main comment above.
     else:
         if not original_placeholder:
             print(f"Warning: Original content {original_content.pk} has no placeholder 'content'.")

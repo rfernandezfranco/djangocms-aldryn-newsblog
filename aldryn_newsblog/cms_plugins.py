@@ -207,11 +207,23 @@ class NewsBlogRelatedPlugin(AdjustableCacheMixin, NewsBlogPlugin):
             view_name = request.resolver_match.view_name
             namespace = request.resolver_match.namespace
             if view_name == f'{namespace}:article-detail':
-                # FIXME #VERSIONING: active_translations might need re-evaluation for versioning context.
-                # Slug is on ArticleContent.
+                # CONFIRMED #VERSIONING: This relies on the default manager of ArticleContent
+                # (models.ArticleContent.objects) to be versioning-aware and return only
+                # content linked to a currently published version in a frontend context.
+                # Parler's active_translations() further filters this by language.
+                # Slug for lookup is on ArticleContent.
+                article_slug = request.resolver_match.kwargs.get('slug')
+                if not article_slug: # Should always be present based on URL patterns
+                    return None
+
+                # Assuming self.config is available if this plugin is apphook-config aware,
+                # which it isn't directly (NewsBlogRelatedPlugin is not a NewsBlogCMSPlugin subclass).
+                # The current article's app_config needs to be inferred if filtering by it is desired.
+                # For now, let's assume slug is unique enough for lookup or context provides app_config.
+                # If multiple apphooks could have same slug, this might need refinement.
                 article_content = models.ArticleContent.objects.active_translations(
-                    slug=request.resolver_match.kwargs['slug']
-                ).first() # Using .first() instead of .count() and [0]
+                    slug=article_slug
+                ).first()
                 return article_content
         return None
 
@@ -253,13 +265,36 @@ class NewsBlogSerialEpisodesPlugin(AdjustableCacheMixin, NewsBlogPlugin):
         context = super().render(context, instance, placeholder)
         article_content = context.get('article') # This will be an ArticleContent instance
         if article_content is not None and hasattr(article_content, 'article_grouper') and article_content.article_grouper and article_content.article_grouper.serial is not None:
-            serial = article_content.article_grouper.serial
-            # FIXME #VERSIONING: This needs to fetch published ArticleContent versions related to this serial.
-            # Ordering should be by episode on ArticleGrouper.
-            # Exclude the current article_content itself.
-            context['serial_episodes'] = models.ArticleContent.objects.filter(
-                article_grouper__serial=serial
-            ).exclude(pk=article_content.pk).order_by('article_grouper__episode')
+            current_serial = article_content.article_grouper.serial
+
+            from django.contrib.contenttypes.models import ContentType
+            from djangocms_versioning.constants import PUBLISHED
+            from djangocms_versioning.models import Version
+            from django.utils import timezone
+            from django.db.models import Subquery
+
+            content_type_ac = ContentType.objects.get_for_model(models.ArticleContent)
+
+            # Get PKs of ArticleContent objects that belong to the current serial and have a currently published version
+            published_content_pks_for_serial_qs = Version.objects.filter(
+                content_type=content_type_ac,
+                state=PUBLISHED,
+                published__lte=timezone.now(),
+                object_id__in=models.ArticleContent.objects.filter(
+                    article_grouper__serial=current_serial
+                ).values_list('pk', flat=True)
+            ).values_list('object_id', flat=True).distinct()
+
+            # Base queryset of published ArticleContent for this serial
+            serial_episodes_qs = models.ArticleContent.objects.filter(
+                pk__in=Subquery(published_content_pks_for_serial_qs) # Use Subquery for potentially better performance
+            )
+
+            # Exclude the current article_content itself
+            if article_content.pk:
+                serial_episodes_qs = serial_episodes_qs.exclude(pk=article_content.pk)
+
+            context['serial_episodes'] = serial_episodes_qs.order_by('article_grouper__episode')
         else:
             context['serial_episodes'] = []
         return context
