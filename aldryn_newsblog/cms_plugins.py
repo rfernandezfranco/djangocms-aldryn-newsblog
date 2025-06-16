@@ -80,12 +80,35 @@ class NewsBlogArchivePlugin(AdjustableCacheMixin, NewsBlogPlugin):
         request = context.get('request')
         context['instance'] = instance
 
-        # FIXME #VERSIONING: .get_months() was likely a custom manager method on Article.
-        # This needs to be reimplemented for ArticleContent, possibly querying ArticleGrouper
-        # for dates associated with published versions.
-        # For now, setting dates to empty list to avoid error.
-        # queryset = models.ArticleContent.objects
-        context['dates'] = [] # queryset.get_months( ... )
+        from django.db.models.functions import TruncMonth
+        from django.db.models import Count
+        from djangocms_versioning.constants import PUBLISHED
+        from djangocms_versioning.models import Version
+        from django.contrib.contenttypes.models import ContentType
+        from ..models import ArticleContent
+
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+
+        # Base queryset for versions of ArticleContent within the plugin's app_config
+        versions_qs = Version.objects.filter(
+            content_type=content_type,
+            state=PUBLISHED,
+            object_id__in=ArticleContent.objects.filter(
+                article_grouper__app_config=instance.app_config
+            ).values_list('pk', flat=True)
+        )
+
+        # Get distinct months from the 'published' field of these versions
+        # and count the number of articles (versions) in each month.
+        dates_data = versions_qs.annotate(
+            month=TruncMonth('published')  # Truncates datetime to the first day of the month
+        ).values('month').annotate(
+            num_articles=Count('id')  # Count versions per month
+        ).order_by('-month')  # Order by month descending (most recent first)
+
+        # The template expects a list of dicts like: [{'date': date_obj, 'num_articles': count}]
+        # 'month' from the query is already a date object (first day of the month).
+        context['dates'] = [{'date': item['month'], 'num_articles': item['num_articles']} for item in dates_data]
         return context
 
 

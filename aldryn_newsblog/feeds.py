@@ -33,30 +33,73 @@ class LatestArticlesFeed(Feed):
         return _('Articles on %(site_name)s') % msgformat
 
     def get_queryset(self):
-        # FIXME #VERSIONING: .published() and namespace() are not standard model managers.
-        # Need to filter by published versions and app_config on ArticleGrouper.
-        # app_config is on ArticleGrouper.
-        qs = ArticleContent.objects.filter(
-            article_grouper__app_config__namespace=self.namespace
-        ).translated(*self.valid_languages)
+        from django.contrib.contenttypes.models import ContentType
+        from djangocms_versioning.constants import PUBLISHED
+        from djangocms_versioning.models import Version
+        from django.utils import timezone
+        from django.db.models import Subquery
+
+        app_config = getattr(self, 'config', None)
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+
+        published_content_pks_query = Version.objects.filter(
+            content_type=content_type,
+            state=PUBLISHED,
+            published__lte=timezone.now()
+        ).values_list('object_id', flat=True).distinct()
+
+        qs = ArticleContent.objects.filter(pk__in=Subquery(published_content_pks_query))
+
+        if app_config:
+            qs = qs.filter(article_grouper__app_config=app_config)
+
+        # The self.valid_languages is set in __call__ and should be used for translation filtering.
+        if self.valid_languages:
+            qs = qs.translated(*self.valid_languages)
         return qs
 
-    def items(self, obj):
-        qs = self.get_queryset()
-        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
-        # Order by version's publish date. For now, ordering by grouper PK.
-        return qs.order_by('-article_grouper__pk')[:10] # Changed from publishing_date
+    def items(self): # obj parameter is not used by base Feed.items, removing it.
+        from django.contrib.contenttypes.models import ContentType
+        from djangocms_versioning.constants import PUBLISHED
+        from djangocms_versioning.models import Version
+        from django.db.models import Subquery, OuterRef
 
-    def item_title(self, item):
+        qs = self.get_queryset()
+
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+        version_published_date_subquery = Subquery(
+            Version.objects.filter(
+                object_id=OuterRef('pk'),
+                content_type=content_type,
+                state=PUBLISHED # Ensure we're getting the date from a PUBLISHED version
+            ).order_by('-published').values('published')[:1]
+        )
+
+        qs = qs.annotate(
+            version_published_date=version_published_date_subquery
+        ).order_by('-version_published_date')[:10]
+        return qs
+
+    def item_title(self, item: ArticleContent):
         return item.title
 
-    def item_description(self, item):
+    def item_description(self, item: ArticleContent):
         return item.lead_in
 
-    def item_pubdate(self, item):
-        # FIXME #VERSIONING: publishing_date is no longer on ArticleContent.
-        # Needs to come from Version object. Placeholder.
-        return None # Was: item.publishing_date
+    def item_pubdate(self, item: ArticleContent):
+        from djangocms_versioning.constants import PUBLISHED
+        from djangocms_versioning.models import Version
+
+        if hasattr(item, 'version_published_date') and item.version_published_date:
+            return item.version_published_date
+        else:
+            # Fallback, though items() should always annotate.
+            try:
+                # Ensure we get the version associated with THIS specific content object 'item'
+                version = Version.objects.get_for_content(item, state=PUBLISHED)
+                return version.published
+            except Version.DoesNotExist:
+                return None
 
 
 class TagFeed(LatestArticlesFeed):
