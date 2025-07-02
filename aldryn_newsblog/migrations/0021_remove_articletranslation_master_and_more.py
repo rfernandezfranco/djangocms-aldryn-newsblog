@@ -18,9 +18,12 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('aldryn_categories', '0006_alter_category_id_alter_categorytranslation_id'),
+        # Adjusted to match the latest migrations available in the installed
+        # versions of the related packages. This resolves missing node errors
+        # during migration graph generation.
+        ('aldryn_categories', '0005_alter_category_id_alter_categorytranslation_id_and_more'),
         ('aldryn_newsblog', '0020_alter_article_id_alter_articletranslation_id_and_more'),
-        ('aldryn_people', '0020_alter_group_id_alter_grouptranslation_id_and_more'),
+        ('aldryn_people', '0019_alter_group_id_alter_grouptranslation_id_and_more'),
         ('cms', '0035_auto_20230822_2208_squashed_0036_auto_20240311_1028'),
         ('taggit', '0006_rename_taggeditem_content_type_object_id_taggit_tagg_content_8fc721_idx'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

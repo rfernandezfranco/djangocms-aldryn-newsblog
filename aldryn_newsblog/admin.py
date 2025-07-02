@@ -8,16 +8,19 @@ from cms.admin.placeholderadmin import (
     FrontendEditableAdminMixin, PlaceholderAdminMixin,
 )
 
-from aldryn_apphooks_config.admin import BaseAppHookConfig, ModelAppHookConfig
+from aldryn_apphooks_config.admin import BaseAppHookConfig
 from aldryn_people.models import Person
 from aldryn_translation_tools.admin import AllTranslationsMixin
 from parler.admin import TranslatableAdmin
 from parler.forms import TranslatableModelForm
+from django import forms
+import datetime
 
 from . import models
-from .models import ArticleGrouper # Ensure ArticleGrouper is imported
+from .models import ArticleGrouper  # Ensure ArticleGrouper is imported
 
-from cms.admin.utils import GrouperModelAdmin
+from cms.admin.utils import GrouperModelAdmin, CONTENT_PREFIX
+from django.conf import settings
 from djangocms_versioning.admin import ExtendedGrouperVersionAdminMixin, StateIndicatorMixin, ExtendedVersionAdminMixin
 
 
@@ -56,17 +59,15 @@ make_not_featured.short_description = _(
 class ArticleAdminForm(TranslatableModelForm):
 
     class Meta:
-        model = models.ArticleContent # Changed from Article
+        model = models.ArticleContent  # Changed from Article
         fields = [
-            'article_grouper', # Added: field to link to the grouper
+            'article_grouper',  # Added: field to link to the grouper
             'title',
             'slug',
             'lead_in',
             'featured_image',
-            'is_featured', # Kept: as it's a content-specific flag
-            'categories',
-            'tags',
-            'related', # Kept: now points to ArticleGrouper
+            'is_featured',  # Kept: as it's a content-specific flag
+            # M2M fields removed to avoid versioning create errors
             'meta_title',
             'meta_description',
             'meta_keywords',
@@ -90,20 +91,48 @@ class ArticleAdminForm(TranslatableModelForm):
             if hasattr(self.fields['related'], 'widget'):
                 self.fields['related'].widget.can_add_related = False
 
+    def get_initial_for_field(self, field, field_name):
+        value = super().get_initial_for_field(field, field_name)
+        if hasattr(value, 'all'):
+            value = list(value.all())
+        return value
+
         # Fields like 'app_config', 'author', 'owner', 'serial', 'episode' are now on ArticleGrouper.
         # If they need to be set, it would typically be done when creating/editing the ArticleGrouper,
         # not the ArticleContent directly (or ArticleContent form would need to handle this indirectly).
         # Thus, direct manipulation of self.fields['app_config'] or self.fields['author'] is removed here.
 
 
+class ArticleGrouperAdminForm(forms.ModelForm):
+    """ModelForm for ArticleGrouper that sanitizes initial M2M data."""
+
+    class Meta:
+        model = models.ArticleGrouper
+        fields = '__all__'
+
+    def get_initial_for_field(self, field, field_name):
+        if field_name in self.initial:
+            value = self.initial[field_name]
+        else:
+            value = field.initial
+        if hasattr(value, 'all'):
+            value = list(value.all())
+        elif callable(value):
+            value = value()
+        if (isinstance(value, (datetime.datetime, datetime.time)) and not field.widget.supports_microseconds):
+            value = value.replace(microsecond=0)
+        return value
+
+
 @admin.register(ArticleGrouper)
 class ArticleGrouperAdmin(ExtendedGrouperVersionAdminMixin, StateIndicatorMixin, GrouperModelAdmin):
-    content_model = models.ArticleContent # Explicitly set the content model
+    form = ArticleGrouperAdminForm
+    content_model = models.ArticleContent  # Explicitly set the content model
     list_display = [
         '__str__',
         'author',
         'app_config',
-        'state_indicator', # From StateIndicatorMixin
+        'state_indicator',  # From StateIndicatorMixin
         'serial',
         'episode',
     ]
@@ -112,43 +141,80 @@ class ArticleGrouperAdmin(ExtendedGrouperVersionAdminMixin, StateIndicatorMixin,
         'author',
         'serial',
     ]
-    search_fields = ['author__name', 'serial__name', 'translations__title'] # Example, assuming title on content
+    search_fields = ['author__name', 'serial__name', 'translations__title']  # Example, assuming title on content
+
+    def get_changeform_initial_data(self, request):
+        """Preselect owner and author based on the logged in user."""
+        initial = super().get_changeform_initial_data(request)
+        if request.user.is_authenticated:
+            initial.setdefault("owner", request.user.pk)
+            try:
+                person = Person.objects.get(user=request.user)
+                initial.setdefault("author", person.pk)
+            except Person.DoesNotExist:
+                pass
+        return initial
+
+    def save_model(self, request, obj, form, change):
+        """Handle many-to-many data when creating the related ArticleContent."""
+        m2m_keys = [
+            f"{CONTENT_PREFIX}categories",
+            f"{CONTENT_PREFIX}tags",
+            f"{CONTENT_PREFIX}related",
+        ]
+        m2m_data = {key: form.cleaned_data.pop(key, []) for key in m2m_keys if key in form.cleaned_data}
+
+        # Extract translated fields from POST data because the autogenerated
+        # grouper form does not include them. Tests submit fields using the
+        # ``content__<field>_<lang>`` naming pattern.
+        translated_post = {}
+        for lang_code, _lang in settings.LANGUAGES:
+            for field in ("title", "slug", "lead_in"):
+                key = f"{CONTENT_PREFIX}{field}_{lang_code}"
+                if key in request.POST:
+                    translated_post.setdefault(lang_code, {})[field] = request.POST[key]
+
+        super().save_model(request, obj, form, change)
+
+        content_qs = self.content_model._original_manager.filter(article_grouper=obj)
+        content = (
+            form._content_instance if form._content_instance and form._content_instance.pk else content_qs.latest("pk")
+        )
+
+        for lang_code, values in translated_post.items():
+            content.set_current_language(lang_code)
+            for field, value in values.items():
+                setattr(content, field, value)
+            content.save()
+        if f"{CONTENT_PREFIX}categories" in m2m_data:
+            content.categories.set(m2m_data[f"{CONTENT_PREFIX}categories"])
+        if f"{CONTENT_PREFIX}tags" in m2m_data:
+            content.tags.set(m2m_data[f"{CONTENT_PREFIX}tags"])
+        if f"{CONTENT_PREFIX}related" in m2m_data:
+            content.related.set(m2m_data[f"{CONTENT_PREFIX}related"])
 
 
-@admin.register(models.ArticleContent) # Changed from models.Article and ArticleAdmin
-class ArticleContentAdmin( # Renamed from ArticleAdmin
-    ExtendedVersionAdminMixin, # Added
+@admin.register(models.ArticleContent)
+class ArticleContentAdmin(
+    ExtendedVersionAdminMixin,
     AllTranslationsMixin,
     PlaceholderAdminMixin,
     FrontendEditableAdminMixin,
-    # ModelAppHookConfig, # Commented out as app_config is on grouper
     TranslatableAdmin
 ):
     form = ArticleAdminForm
-    # list_display, list_filter, and actions are typically managed by ExtendedVersionAdminMixin
-    # or are less relevant for a version edit screen.
-    # Commenting them out for now.
-    # list_display = ('title', 'slug', 'is_featured_display', 'article_grouper_app_config_display', 'language_column')
-    # list_filter = (
-    #     'article_grouper__app_config',
-    #     'categories',
-    #     'is_featured',
-    #     'article_grouper__author',
-    # )
-    # actions = (
-    #     make_featured, make_not_featured,
-    # )
+    # ExtendedVersionAdminMixin manages list display and actions
 
     # fieldsets define the edit view for a version (ArticleContent)
     fieldsets = (
         (None, {
             'fields': (
-                # 'article_grouper', # Should NOT be editable here; it's fixed for a version.
-                                   # ExtendedVersionAdminMixin handles this link.
+                # 'article_grouper',  # Should NOT be editable here; it's fixed for a version.
+                #                        ExtendedVersionAdminMixin handles this link.
                 'title',
                 'is_featured',
                 'lead_in',
-                # 'content', # PlaceholderField handled by PlaceholderAdminMixin
+                # 'content',  # PlaceholderField handled by PlaceholderAdminMixin
             )
         }),
         (_('Meta Options'), {
@@ -170,16 +236,8 @@ class ArticleContentAdmin( # Renamed from ArticleAdmin
             )
         }),
     )
-    filter_horizontal = [
-        'categories',
-        'related', # related pointing to ArticleGrouper might work here.
-    ]
+    filter_horizontal = ['categories', 'related']
 
-    # Remove methods specific to the old list display or ModelAppHookConfig if it was removed.
-    # The display methods like 'article_grouper_app_config_display' are for list_display.
-    # 'add_view' might not be directly used if versions are created via grouper admin.
-    # 'get_view_on_site_url' is useful and ExtendedVersionAdminMixin might provide its own or enhance this.
-    # For now, keeping get_view_on_site_url as it might still be relevant for viewing a specific version.
     def get_view_on_site_url(self, obj=None) -> Optional[str]:
         if obj is not None:
             try:
@@ -196,21 +254,19 @@ class SerialAdmin(admin.ModelAdmin):
     change_form_template = "aldryn_newsblog/admin/serial_episodes_change_form.html"
 
     def episodes_count(self, obj: models.Serial) -> int:
-        # Article was renamed to ArticleContent, serial is on ArticleGrouper
         return models.ArticleGrouper.objects.filter(serial=obj).count()
     episodes_count.short_description = _('Total episodes')
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
         if extra_context is None:
             extra_context = {}
-        # Article was renamed to ArticleContent, serial and episode are on ArticleGrouper
-        # To display episodes (ArticleContent), we'd query through ArticleGrouper
         extra_context['serial_episodes'] = models.ArticleContent.objects.filter(
             article_grouper__serial_id=object_id
-        ).order_by('article_grouper__episode') # Order by episode on the grouper
+        ).order_by('article_grouper__episode')  # Order by episode on the grouper
         return self.changeform_view(request, object_id, form_url, extra_context)
 
-# admin.site.register(models.Article, ArticleAdmin) # Removed, ArticleContentAdmin registered with decorator
+
+# admin.site.register(models.Article, ArticleAdmin)  # Removed, ArticleContentAdmin registered with decorator
 admin.site.register(models.Serial, SerialAdmin)
 
 

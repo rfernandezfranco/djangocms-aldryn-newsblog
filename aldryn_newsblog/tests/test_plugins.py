@@ -6,6 +6,7 @@ from django.utils.encoding import force_str
 from django.utils.translation import override
 
 from cms import api
+from djangocms_versioning.models import Version
 
 from aldryn_newsblog.models import NewsBlogConfig
 
@@ -68,11 +69,15 @@ class TestArchivePlugin(TestAppConfigPluginsBase):
         ]
         articles = []
         for d in dates:
-            article = self.create_article(publishing_date=d)
+            article = self.create_article()
+            version = Version.objects.get_for_content(article)
+            version.publish(self.user)
+            version.created = d
+            version.save(update_fields=['created'])
             articles.append(article)
         response = self.client.get(self.plugin_page.get_absolute_url())
         response_content = force_str(response.content)
-        needle = '<a href="/en/page/{year}/{month}/"[^>]*>'
+        needle = '<a href="/page/{year}/{month}/"[^>]*>'
         '[^<]*<span class="badge">{num}</span>'
         month1 = needle.format(year=2014, month=11, num=2)
         month2 = needle.format(year=2015, month=2, num=1)
@@ -96,6 +101,8 @@ class TestArticleSearchPlugin(TestAppConfigPluginsBase):
         needle = '<input type="hidden" name="max_articles" value="{num}">'
         response = self.client.get(self.plugin_page.get_absolute_url())
         self.assertContains(response, needle.format(num=5))
+        search_url = reverse(f'{self.app_config.namespace}:article-search')
+        self.assertContains(response, f'action="{search_url}"')
 
 
 class TestAuthorsPlugin(TestAppConfigPluginsBase):
@@ -106,13 +113,13 @@ class TestAuthorsPlugin(TestAppConfigPluginsBase):
         # Published, author1 articles in our current namespace
         author1_articles = []
         for _ in range(3):
-            article = self.create_article(author=author1)
+            article = self.create_article(author=author1, is_published=True)
             author1_articles.append(article)
 
         # Published, author2 articles in our current namespace
         other_articles = []
         for _ in range(5):
-            article = self.create_article(author=author2)
+            article = self.create_article(author=author2, is_published=True)
             other_articles.append(article)
 
         # Unpublished, author1 articles in our current namespace
@@ -126,7 +133,8 @@ class TestAuthorsPlugin(TestAppConfigPluginsBase):
         # Published, author1 articles in a different namespace
         other_articles.append(self.create_article(
             author=author1,
-            app_config=self.another_app_config
+            app_config=self.another_app_config,
+            is_published=True,
         ))
 
         # REQUIRED DUE TO USE OF RAW QUERIES
@@ -136,7 +144,7 @@ class TestAuthorsPlugin(TestAppConfigPluginsBase):
         response_content = force_str(response.content)
         # This pattern tries to accommodate all the templates from all the
         # versions of this package.
-        pattern = r'<a href="{url}">\s*</a>'  # noqa: #W605
+        pattern = r'(?s)<a href="{url}">.*?</a>'  # noqa: #W605
         author1_pattern = pattern.format(
             url=reverse(
                 f'{self.app_config.namespace}:article-list-by-author',
@@ -160,14 +168,14 @@ class TestCategoriesPlugin(TestAppConfigPluginsBase):
         # Published, category1 articles in our current namespace
         cat1_articles = []
         for _ in range(3):
-            article = self.create_article()
+            article = self.create_article(is_published=True)
             article.categories.add(self.category1)
             cat1_articles.append(article)
 
         # Published category2 articles in our namespace
         other_articles = []
         for _ in range(5):
-            article = self.create_article()
+            article = self.create_article(is_published=True)
             article.categories.add(self.category2)
             other_articles.append(article)
 
@@ -179,7 +187,7 @@ class TestCategoriesPlugin(TestAppConfigPluginsBase):
 
         # Some tag1 articles in another namespace
         for _ in range(1):
-            article = self.create_article(app_config=self.another_app_config)
+            article = self.create_article(app_config=self.another_app_config, is_published=True)
             article.categories.add(self.category1)
             other_articles.append(article)
 
@@ -196,6 +204,11 @@ class TestCategoriesPlugin(TestAppConfigPluginsBase):
         needle2 = pattern.format(num=5, name=self.category2.name)
         self.assertRegex(response_content, needle1)
         self.assertRegex(response_content, needle2)
+
+        # Categories should be ordered by article count descending
+        index_cat2 = response_content.index(self.category2.name)
+        index_cat1 = response_content.index(self.category1.name)
+        self.assertLess(index_cat2, index_cat1)
 
 
 class TestFeaturedArticlesPlugin(TestPluginLanguageHelperMixin,
@@ -216,11 +229,12 @@ class TestFeaturedArticlesPlugin(TestPluginLanguageHelperMixin,
             is_published=False
         ) for _ in range(3)]
         # Some non-featured articles in the same namespace
-        other_articles += [self.create_article() for _ in range(3)]
+        other_articles += [self.create_article(is_published=True) for _ in range(3)]
         # Some featured articles in another namespace
         other_articles += [self.create_article(
             is_featured=True,
-            app_config=self.another_app_config
+            app_config=self.another_app_config,
+            is_published=True,
         ) for _ in range(3)]
 
         response = self.client.get(self.plugin_page.get_absolute_url())
@@ -231,8 +245,10 @@ class TestFeaturedArticlesPlugin(TestPluginLanguageHelperMixin,
 
     def test_featured_articles_plugin_unpublished_app_page(self):
         with override(self.language):
-            articles = [self.create_article(is_featured=True)
-                        for _ in range(3)]
+            articles = [
+                self.create_article(is_featured=True, is_published=True)
+                for _ in range(3)
+            ]
 
         response = self.client.get(self.plugin_page.get_absolute_url())
         for article in articles:
@@ -249,7 +265,7 @@ class TestFeaturedArticlesPlugin(TestPluginLanguageHelperMixin,
             self.assertContains(response, article.title)
 
     def test_featured_articles_plugin_language(self):
-        article = self.create_article(is_featured=True)
+        article = self.create_article(is_featured=True, is_published=True)
         self._test_plugin_languages_with_article(article)
 
 
@@ -261,9 +277,9 @@ class TestLatestArticlesPlugin(TestPluginLanguageHelperMixin,
     }
 
     def test_latest_articles_plugin(self):
-        articles = [self.create_article() for _ in range(7)]
+        articles = [self.create_article(is_published=True) for _ in range(7)]
         another_app_config = NewsBlogConfig.objects.create(namespace='another')
-        another_articles = [self.create_article(app_config=another_app_config)
+        another_articles = [self.create_article(app_config=another_app_config, is_published=True)
                             for _ in range(3)]
         response = self.client.get(self.plugin_page.get_absolute_url())
         for article in articles:
@@ -279,9 +295,9 @@ class TestLatestArticlesPlugin(TestPluginLanguageHelperMixin,
         featured_articles = []
         for idx in range(7):
             if idx % 2:
-                featured_articles.append(self.create_article(is_featured=True))
+                featured_articles.append(self.create_article(is_featured=True, is_published=True))
             else:
-                articles.append(self.create_article())
+                articles.append(self.create_article(is_published=True))
         response = self.client.get(self.plugin_page.get_absolute_url())
         for article in articles:
             self.assertContains(response, article.title)
@@ -300,7 +316,7 @@ class TestLatestArticlesPlugin(TestPluginLanguageHelperMixin,
 
     def test_latest_articles_plugin_unpublished_app_page(self):
         with override(self.language):
-            articles = [self.create_article() for _ in range(3)]
+            articles = [self.create_article(is_published=True) for _ in range(3)]
 
         response = self.client.get(self.plugin_page.get_absolute_url())
         for article in articles:
@@ -317,7 +333,7 @@ class TestLatestArticlesPlugin(TestPluginLanguageHelperMixin,
             self.assertContains(response, article.title)
 
     def test_latest_articles_plugin_language(self):
-        article = self.create_article()
+        article = self.create_article(is_published=True)
         self._test_plugin_languages_with_article(article)
 
 
@@ -341,7 +357,7 @@ class TestRelatedArticlesPlugin(TestPluginLanguageHelperMixin,
                                 NewsBlogTestCase):
 
     def test_related_articles_plugin(self):
-        main_article = self.create_article(app_config=self.app_config)
+        main_article = self.create_article(app_config=self.app_config, is_published=True)
         alias_content = self.create_alias_content("newsblog_social", self.language)
         version = alias_content.versions.last()
         version.publish(self.user)
@@ -356,25 +372,27 @@ class TestRelatedArticlesPlugin(TestPluginLanguageHelperMixin,
 
         main_article.save()
         for _ in range(3):
-            a = self.create_article()
+            a = self.create_article(is_published=True)
             a.save()
-            main_article.related.add(a)
+            main_article.related.add(a.article_grouper)
 
         another_language_articles = []
         with override('de'):
             for _ in range(4):
-                a = self.create_article()
-                main_article.related.add(a)
+                a = self.create_article(is_published=True)
+                main_article.related.add(a.article_grouper)
                 another_language_articles.append(a)
 
         self.assertEqual(main_article.related.count(), 7)
         unrelated = []
         for _ in range(5):
-            unrelated.append(self.create_article())
+            unrelated.append(self.create_article(is_published=True))
 
         response = self.client.get(main_article.get_absolute_url())
-        for article in main_article.related.all():
-            self.assertContains(response, article.title)
+        for grouper in main_article.related.all():
+            content = grouper.articlecontent_set.language(self.language).first()
+            if content:
+                self.assertContains(response, content.title)
         for article in unrelated:
             self.assertNotContains(response, article.title)
 
@@ -389,8 +407,8 @@ class TestRelatedArticlesPlugin(TestPluginLanguageHelperMixin,
 
     def test_latest_articles_plugin_language(self):
         main_article, related_article = (
-            self.create_article() for _ in range(2))
-        main_article.related.add(related_article)
+            self.create_article(is_published=True) for _ in range(2))
+        main_article.related.add(related_article.article_grouper)
         response_main = self.client.get(main_article.get_absolute_url())
         response_related = self.client.get(related_article.get_absolute_url())
         self.assertContains(response_main, main_article.title)
@@ -402,14 +420,14 @@ class TestTagsPlugin(TestAppConfigPluginsBase):
 
     def test_tags_plugin(self):
         # Published, tag1-tagged articles in our current namespace
-        self.create_tagged_articles(3, tags=['tag1'])['tag1']
-        other_articles = self.create_tagged_articles(5, tags=['tag2'])['tag2']
+        self.create_tagged_articles(3, tags=['tag1'], is_published=True)['tag1']
+        other_articles = self.create_tagged_articles(5, tags=['tag2'], is_published=True)['tag2']
         # Some tag1, but unpublished articles
         other_articles += self.create_tagged_articles(
             7, tags=['tag1'], is_published=False)['tag1']
         # Some tag1 articles in another namespace
         other_articles += self.create_tagged_articles(
-            1, tags=['tag1'], app_config=self.another_app_config)['tag1']
+            1, tags=['tag1'], app_config=self.another_app_config, is_published=True)['tag1']
 
         # REQUIRED DUE TO USE OF RAW QUERIES
         time.sleep(1)

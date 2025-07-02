@@ -16,6 +16,7 @@ django_version = LooseVersion(get_version())
 cms_version = LooseVersion(cms_string_version)
 
 HELPER_SETTINGS = {
+    'SECRET_KEY': 'django-insecure-test-key',
     'TIME_ZONE': 'Europe/Zurich',
     'INSTALLED_APPS': [
         'django.contrib.auth',
@@ -82,7 +83,8 @@ HELPER_SETTINGS = {
         ('de', 'German'),
         ('fr', 'French'),
     ),
-    'ROOT_URLCONF': 'aldryn_newsblog.urls', # Added ROOT_URLCONF
+    # Use a custom URLs module that includes the admin and CMS patterns
+    'ROOT_URLCONF': 'aldryn_newsblog.tests.urls',
     'CMS_LANGUAGES': {
         1: [
             {

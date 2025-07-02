@@ -38,7 +38,7 @@ class Command(BaseCommand):
         published_content_pks = Version.objects.filter(
             content_type=content_type_ac,
             state=PUBLISHED,
-            published__lte=timezone.now()  # Ensure it's currently published
+            created__lte=timezone.now()  # Ensure it's currently published
         ).values_list('object_id', flat=True).distinct()
 
         for article_content in ArticleContent.objects.filter(pk__in=published_content_pks):

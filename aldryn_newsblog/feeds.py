@@ -45,7 +45,7 @@ class LatestArticlesFeed(Feed):
         published_content_pks_query = Version.objects.filter(
             content_type=content_type,
             state=PUBLISHED,
-            published__lte=timezone.now()
+            created__lte=timezone.now()
         ).values_list('object_id', flat=True).distinct()
 
         qs = ArticleContent.objects.filter(pk__in=Subquery(published_content_pks_query))
@@ -71,8 +71,8 @@ class LatestArticlesFeed(Feed):
             Version.objects.filter(
                 object_id=OuterRef('pk'),
                 content_type=content_type,
-                state=PUBLISHED # Ensure we're getting the date from a PUBLISHED version
-            ).order_by('-published').values('published')[:1]
+                state=PUBLISHED
+            ).order_by('-created').values('created')[:1]
         )
 
         qs = qs.annotate(
@@ -95,9 +95,9 @@ class LatestArticlesFeed(Feed):
         else:
             # Fallback, though items() should always annotate.
             try:
-                # Ensure we get the version associated with THIS specific content object 'item'
-                version = Version.objects.get_for_content(item, state=PUBLISHED)
-                return version.published
+                version = Version.objects.get_for_content(item)
+                if version.state == PUBLISHED:
+                    return version.created
             except Version.DoesNotExist:
                 return None
 

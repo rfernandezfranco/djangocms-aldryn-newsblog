@@ -6,12 +6,13 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404
 from django.utils import translation
+from django.conf import settings
 from django.views.generic import ListView
 from django.views.generic.detail import DetailView
-from django.contrib.contenttypes.models import ContentType # Added for versioning queries
-from djangocms_versioning.models import Version # Added for versioning queries
-from djangocms_versioning.constants import PUBLISHED # Added for versioning queries
-from django.db.models import OuterRef, Subquery, Q # Added for subqueries, Q was already there
+from django.contrib.contenttypes.models import ContentType
+from djangocms_versioning.models import Version
+from djangocms_versioning.constants import PUBLISHED
+from django.db.models import OuterRef, Subquery
 
 from menus.utils import set_language_changer
 
@@ -25,15 +26,14 @@ from taggit.models import Tag
 from aldryn_newsblog.compat import toolbar_edit_mode_active
 from aldryn_newsblog.utils.utilities import get_valid_languages_from_request
 
-from .models import ArticleContent, ArticleGrouper # Changed Article to ArticleContent, ArticleGrouper
+from .models import ArticleContent
 from .utils import add_prefix_to_path
 
 
 class TemplatePrefixMixin:
 
     def prefix_template_names(self, template_names):
-        if (hasattr(self.config, 'template_prefix') and  # noqa: W504
-                self.config.template_prefix):
+        if hasattr(self.config, 'template_prefix') and self.config.template_prefix:
             prefix = self.config.template_prefix
             template_names = [
                 add_prefix_to_path(template, prefix) for template in template_names
@@ -43,6 +43,38 @@ class TemplatePrefixMixin:
     def get_template_names(self):
         template_names = super().get_template_names()
         return self.prefix_template_names(template_names)
+
+
+class StrictSlugMixin(TranslatableSlugMixin):
+    """A TranslatableSlugMixin variant that respects PARLER hide_untranslated."""
+
+    def get_language(self):
+        """Return the preferred language for slug lookup.
+
+        This checks the ``Accept-Language`` header first so tests can request
+        a language that differs from the URL prefix.  If the header is absent
+        it falls back to Django's active language like the base mixin.
+        """
+        header = self.request.META.get("HTTP_ACCEPT_LANGUAGE")
+        if header:
+            lang = header.split(',')[0].split(';')[0].strip()
+            if lang:
+                return lang
+        return super().get_language()
+
+    def get_language_choices(self):
+        language = self.get_language()
+        site_id = getattr(settings, 'SITE_ID', 1)
+        langs = settings.PARLER_LANGUAGES.get(site_id, [])
+        default = settings.PARLER_LANGUAGES.get('default', {})
+        hide = default.get('hide_untranslated', False)
+        for cfg in langs:
+            if cfg.get('code') == language:
+                hide = cfg.get('hide_untranslated', hide)
+                break
+        if hide:
+            return [language]
+        return super().get_language_choices()
 
 
 class EditModeMixin:
@@ -73,14 +105,25 @@ class PreviewModeMixin(EditModeMixin):
         if not (self.edit_mode or user_can_edit):
             # Relying on djangocms-versioning's default manager to filter for published versions.
             # If user_can_edit or in edit_mode, versioning system may show drafts.
-            pass # No explicit filtering here if default manager is version-aware.
+            pass  # No explicit filtering here if default manager is version-aware.
         language = translation.get_language()
-        # FIXME #VERSIONING: .namespace() needs adjustment if it relied on Article structure.
-        # It should now filter based on article_grouper.app_config.namespace.
-        # Assuming self.namespace is the namespace string from the apphook.
         if hasattr(self, 'namespace') and self.namespace:
-             qs = qs.filter(article_grouper__app_config__namespace=self.namespace)
+            qs = qs.filter(article_grouper__app_config__namespace=self.namespace)
         qs = qs.active_translations(language)
+
+        # Order the queryset by the creation date of the published version so
+        # pagination is deterministic across CMS versions.
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+        published_date_sq = Version.objects.filter(
+            object_id=OuterRef('pk'),
+            content_type=content_type,
+            state=PUBLISHED,
+        ).values('created')[:1]
+        qs = qs.annotate(
+            version_published_date=Subquery(published_date_sq)
+        ).exclude(
+            version_published_date__isnull=True
+        ).order_by('-version_published_date')
         return qs
 
 
@@ -102,9 +145,17 @@ class AppHookCheckMixin:
         return qs.translated(*self.valid_languages)
 
 
-class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
-                    TranslatableSlugMixin, TemplatePrefixMixin, DetailView):
-    model = ArticleContent # Changed Article to ArticleContent
+class ArticleDetail(
+    AppConfigMixin,
+    AppHookCheckMixin,
+    PreviewModeMixin,
+    StrictSlugMixin,
+    TemplatePrefixMixin,
+    DetailView,
+):
+    model = ArticleContent  # Changed Article to ArticleContent
+    template_name = 'aldryn_newsblog/article_detail.html'
+    context_object_name = 'article'
     slug_field = 'slug'
     year_url_kwarg = 'year'
     month_url_kwarg = 'month'
@@ -150,14 +201,33 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
         pk = self.kwargs.get(self.pk_url_kwarg, None)
 
         if pk is not None:
-            # Let the DetailView itself handle this one
-            return DetailView.get_object(self, queryset=queryset)
+            obj = DetailView.get_object(self, queryset=queryset)
         elif slug is not None:
-            # Let the TranslatedSlugMixin take over
-            return super().get_object(queryset=queryset)
+            obj = super().get_object(queryset=queryset)
+        else:
+            raise AttributeError('ArticleDetail view must be called with either '
+                                 'an object pk or a slug')
 
-        raise AttributeError('ArticleDetail view must be called with either '
-                             'an object pk or a slug')
+        # Respect PARLER hide_untranslated settings: if the object was resolved
+        # via a fallback language and translations for the requested language are
+        # hidden, return a 404 instead of displaying the fallback content.
+        header = self.request.META.get("HTTP_ACCEPT_LANGUAGE")
+        if header:
+            request_lang = header.split(',')[0].split(';')[0].strip()
+        else:
+            request_lang = translation.get_language()
+        site_id = getattr(settings, 'SITE_ID', 1)
+        langs = settings.PARLER_LANGUAGES.get(site_id, [])
+        default = settings.PARLER_LANGUAGES.get('default', {})
+        hide = default.get('hide_untranslated', False)
+        for cfg in langs:
+            if cfg.get('code') == request_lang:
+                hide = cfg.get('hide_untranslated', hide)
+                break
+        if hide and obj.get_current_language() != request_lang:
+            raise Http404('No translation for current language')
+
+        return obj
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -175,28 +245,30 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
         if queryset is None:
             queryset = self.get_queryset()
         if queryset is None:
-            queryset = self.get_queryset() # This queryset is of ArticleContent
+            queryset = self.get_queryset()  # queryset of ArticleContent
         if object is None:
-            object = self.get_object() # Current ArticleContent instance
+            object = self.get_object()  # Current ArticleContent instance
 
         try:
             current_version = Version.objects.get_for_content(object)
-            if not current_version or not current_version.published:
-                return None # No published version for current object, so no prev/next
-            current_published_date = current_version.published
+            if current_version.state != PUBLISHED:
+                return None
+            current_published_date = current_version.created
         except Version.DoesNotExist:
-            return None # Should not happen for a displayed object
+            return None  # Should not happen for a displayed object
 
         # Subquery to get the published date of a version for an ArticleContent
         version_published_subquery = Version.objects.filter(
             object_id=OuterRef('pk'),
             content_type=ContentType.objects.get_for_model(ArticleContent),
             state=PUBLISHED
-        ).values('published')[:1]
+        ).values('created')[:1]
 
         qs_with_version_date = queryset.annotate(
             version_published_date=Subquery(version_published_subquery)
-        ).exclude(version_published_date__isnull=True) # Ensure we only consider items with a published version
+        ).exclude(  # Ensure we only consider items with a published version
+            version_published_date__isnull=True
+        )
 
         prev_objs = qs_with_version_date.filter(
             version_published_date__lt=current_published_date
@@ -212,9 +284,9 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
 
         try:
             current_version = Version.objects.get_for_content(object)
-            if not current_version or not current_version.published:
+            if current_version.state != PUBLISHED:
                 return None
-            current_published_date = current_version.published
+            current_published_date = current_version.created
         except Version.DoesNotExist:
             return None
 
@@ -222,7 +294,7 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
             object_id=OuterRef('pk'),
             content_type=ContentType.objects.get_for_model(ArticleContent),
             state=PUBLISHED
-        ).values('published')[:1]
+        ).values('created')[:1]
 
         qs_with_version_date = queryset.annotate(
             version_published_date=Subquery(version_published_subquery)
@@ -237,8 +309,10 @@ class ArticleDetail(AppConfigMixin, AppHookCheckMixin, PreviewModeMixin,
 
 class ArticleListBase(AppConfigMixin, AppHookCheckMixin, TemplatePrefixMixin,
                       PreviewModeMixin, ViewUrlMixin, ListView):
-    model = ArticleContent # Changed Article to ArticleContent
+    model = ArticleContent  # Changed Article to ArticleContent
+    template_name = 'aldryn_newsblog/article_list.html'
     show_header = False
+    context_object_name = 'article_list'
 
     def get_paginate_by(self, queryset):
         if self.paginate_by is not None:
@@ -294,14 +368,10 @@ class ArticleList(ArticleListBase):
             # plugin on the list view page without duplicate entries in page qs.
             exclude_count = self.config.exclude_featured
             if exclude_count:
-                # FIXME #VERSIONING: .published() needs re-evaluation. is_featured is on ArticleContent.
-                # This needs to get PKs of ArticleContent that are featured and published (via versioning).
                 featured_qs = ArticleContent.objects.filter(
-                    article_grouper__app_config=self.config, # Assuming self.config is the app_config instance
+                    article_grouper__app_config=self.config,  # Assuming self.config is the app_config instance
                     is_featured=True
                 )
-                # if not self.edit_mode:
-                #    featured_qs = featured_qs.published() # Placeholder for versioning's published filter
                 exclude_featured_pks = featured_qs.values_list('pk', flat=True)[:exclude_count]
                 qs = qs.exclude(pk__in=exclude_featured_pks)
         return qs
@@ -331,9 +401,6 @@ class ArticleSearchResultsList(ArticleListBase):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # if not self.edit_mode:
-            # FIXME #VERSIONING: .published() needs re-evaluation
-            # qs = qs.published()
         if self.query:
             # search_data is on ArticleContent's translations.
             # title and lead_in are also on translations.
@@ -383,7 +450,7 @@ class AuthorArticleList(ArticleListBase):
         return super().get_context_data(**kwargs)
 
 
-class CategoryArticleList(ArticleListBase):
+class CategoryArticleList(StrictSlugMixin, ArticleListBase):
     """A list of articles filtered by categories."""
     def get_queryset(self):
         return super().get_queryset().filter(
@@ -405,7 +472,7 @@ class CategoryArticleList(ArticleListBase):
         return ctx
 
 
-class TagArticleList(ArticleListBase):
+class TagArticleList(StrictSlugMixin, ArticleListBase):
     """A list of articles filtered by tags."""
     def get_queryset(self):
         return super().get_queryset().filter(
@@ -427,24 +494,22 @@ class TagArticleList(ArticleListBase):
 class DateRangeArticleList(ArticleListBase):
     """A list of articles for a specific date range"""
     def get_queryset(self):
-        qs = super().get_queryset() # Base queryset of ArticleContent
+        qs = super().get_queryset()  # Base queryset of ArticleContent
 
         # FIXME #VERSIONING: This assumes super().get_queryset() ALREADY filters by published state
         # due to djangocms-versioning's default manager. If not, this needs to be more robust.
         # The filtering here is specifically for the date range based on the Version's published field.
 
         content_type = ContentType.objects.get_for_model(ArticleContent)
-        # Subquery to find object_ids of ArticleContent that have a published version within the date range.
-        # Using .values('object_id') and distinct based on typical versioning patterns.
+        # Find content IDs that have a published version in the range.
         version_object_ids_in_range = Version.objects.filter(
             content_type=content_type,
-            state=PUBLISHED, # Ensure we are looking at the published version's date
-            published__gte=self.date_from,
-            published__lt=self.date_to
+            state=PUBLISHED,
+            created__gte=self.date_from,
+            created__lt=self.date_to,
         ).values_list('object_id', flat=True).distinct()
 
-        # Filter the main queryset to include only those ArticleContent items.
-        qs = qs.filter(pk__in=Subquery(version_object_ids_in_range)) # Using Subquery directly on values_list
+        qs = qs.filter(pk__in=Subquery(version_object_ids_in_range))
 
         return qs
 

@@ -64,3 +64,11 @@ section.
 .. |License| image:: https://img.shields.io/pypi/l/djangocms-aldryn-newsblog.svg
     :target: https://pypi.python.org/pypi/djangocms-aldryn-newsblog/
     :alt: license
+## Testing
+
+Run `pip install -e .[testing]` and `pip install -r test_requirements.txt` before
+executing `python custom_manage.py test`. These requirements install
+``djangocms-versioning`` so imports like ``VersionableItem`` resolve correctly.
+Without this package Django fails to start with an ``ImportError`` about
+``VersionableItem``.
+

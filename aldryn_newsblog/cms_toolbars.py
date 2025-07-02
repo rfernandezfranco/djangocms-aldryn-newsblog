@@ -23,12 +23,8 @@ class NewsBlogToolbar(CMSToolbar):
     watch_models = [ArticleContent, ArticleGrouper, ] # Changed Article
     supported_apps = ('aldryn_newsblog',)
 
-    def get_on_delete_redirect_url(self, article_content, language): # Renamed article to article_content
-        # app_config is now on article_grouper
-        # CONFIRMED #VERSIONING: self.toolbar.obj (which becomes article_content here)
-        # is expected to be a fully loaded ArticleContent instance.
-        # The ArticleGrouper is accessed via article_content.article_grouper.
-        # AppConfig is a non-nullable FK on ArticleGrouper, so it should exist if grouper exists.
+    def get_on_delete_redirect_url(self, article_content, language):
+        # The app_config lives on the grouper.
         if article_content and hasattr(article_content, 'article_grouper') and article_content.article_grouper:
             # Further check for app_config on grouper, though it's a required field.
             if not hasattr(article_content.article_grouper, 'app_config') or not article_content.article_grouper.app_config:

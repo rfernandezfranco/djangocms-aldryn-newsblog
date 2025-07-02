@@ -4,12 +4,11 @@ import string
 import sys
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, User
 from django.core.cache import cache
 from django.test import RequestFactory
 from django.urls import clear_url_caches
-from django.utils.timezone import now
+from importlib import import_module
 from django.utils.translation import override
 
 from cms import api
@@ -19,7 +18,6 @@ from cms.exceptions import AppAlreadyRegistered
 from cms.models import PageContent
 from cms.test_utils.testcases import CMSTestCase, TransactionCMSTestCase
 from cms.toolbar.toolbar import CMSToolbar
-from cms.utils.conf import get_cms_setting
 
 from aldryn_categories.models import Category
 from aldryn_people.models import Person
@@ -69,13 +67,16 @@ class NewsBlogTestsMixin:
 
     @staticmethod
     def reload(node):
-        """NOTE: django-treebeard requires nodes to be reloaded via the Django
-        ORM once its sub-tree is modified for the API to work properly.
+        """Reload an instance from the database using the most permissive manager.
 
-        See:: https://tabo.pe/projects/django-treebeard/docs/2.0/caveats.html
-
-        This is a simple helper-method to do that."""
-        return node.__class__.objects.get(id=node.id)
+        Treebeard nodes and versioned models sometimes require using the
+        ``_original_manager`` to bypass default query restrictions.  This helper
+        mirrors the old behaviour of simply fetching the object again by ID but
+        falls back to ``_original_manager`` when available.
+        """
+        model = node.__class__
+        manager = getattr(model, "_original_manager", model.objects)
+        return manager.get(id=node.id)
 
     @classmethod
     def rand_str(cls, prefix='', length=23, chars=string.ascii_letters):
@@ -83,36 +84,69 @@ class NewsBlogTestsMixin:
 
     @classmethod
     def create_user(cls, **kwargs):
+        from django.db.models import signals
+        from cms.signals.permissions import post_save_user
+
         kwargs.setdefault('username', cls.rand_str())
         kwargs.setdefault('first_name', cls.rand_str())
         kwargs.setdefault('last_name', cls.rand_str())
-        return User.objects.create(**kwargs)
+
+        # Disable Django CMS' PageUser creation when saving users. The
+        # additional objects are irrelevant for these tests and can trigger
+        # FOREIGN KEY errors with transaction rollbacks.
+        signals.post_save.disconnect(
+            post_save_user,
+            sender=User,
+            dispatch_uid="cms_post_save_user",
+        )
+        try:
+            user = User.objects.create(**kwargs)
+        finally:
+            signals.post_save.connect(
+                post_save_user,
+                sender=User,
+                dispatch_uid="cms_post_save_user",
+            )
+        return user
 
     def create_person(self):
-        return Person.objects.create(
-            user=self.create_user(), slug=self.rand_str())
+        user = self.create_user()
+        person = Person(user=user)
+        person.set_current_language(settings.LANGUAGES[0][0])
+        person.name = f"{user.first_name} {user.last_name}".strip() or user.get_username()
+        person.slug = self.rand_str()
+        person.save()
+        return person
 
     def create_article(self, content=None, **kwargs):
         # Determine owner for the grouper
         _owner = kwargs.pop('owner', None)
         if not _owner:
-            if hasattr(self, 'user') and self.user.is_authenticated: # self.user from CMSTestCase
+            if hasattr(self, 'user') and self.user.is_authenticated:  # self.user from CMSTestCase
                 _owner = self.user
-            else: # Fallback to creating a new user
+            else:  # Fallback to creating a new user
                 _owner = self.create_user(is_staff=True, is_superuser=True)
+
+        _app_config = kwargs.pop('app_config', self.app_config)  # Use self.app_config if available
 
         # Determine author for the grouper
         _author = kwargs.pop('author', None)
         if not _author:
             # If an explicit author (Person instance) is not passed,
             # try to find a Person linked to the _owner.
-            # If not found, create a new Person (which also creates a new User for that Person via self.create_person()).
             try:
                 _author = Person.objects.get(user=_owner)
             except Person.DoesNotExist:
-                _author = self.create_person()
-
-        _app_config = kwargs.pop('app_config', self.app_config) # Use self.app_config if available
+                # Only auto-create when the app config opts in
+                if _app_config.create_authors:
+                    _author = Person(user=_owner)
+                    _author.set_current_language(settings.LANGUAGES[0][0])
+                    name = f"{_owner.first_name} {_owner.last_name}".strip() or _owner.get_username()
+                    _author.name = name
+                    _author.slug = self.rand_str()
+                    _author.save()
+                else:
+                    _author = None
         _language = kwargs.pop('language', getattr(self, 'language', settings.LANGUAGES[0][0]))
         _title = kwargs.pop('title', self.rand_str(prefix="Test Article "))
 
@@ -127,17 +161,21 @@ class NewsBlogTestsMixin:
 
         # Remaining kwargs are for ArticleContent.
         # Pop fields that are not on ArticleContent or are handled separately.
-        kwargs.pop('publishing_date', None) # Handled by versioning
-        kwargs.pop('is_published', None)    # Handled by versioning
+        publishing_date = kwargs.pop('publishing_date', None)  # Not used yet
+        is_published = kwargs.pop('is_published', False)
 
         # Create the initial ArticleContent (this will be the DRAFT version)
         content_fields = {
             'article_grouper': grouper,
-            'is_featured': kwargs.pop('is_featured', False), # Example direct field
+            'is_featured': kwargs.pop('is_featured', False),  # Example direct field
             # Any other direct fields for ArticleContent can be set from kwargs here
         }
         # Add remaining kwargs that are valid for ArticleContent
-        valid_content_field_names = {f.name for f in ArticleContent._meta.get_fields() if f.name not in ['translations', 'pk', 'id']}
+        valid_content_field_names = {
+            f.name
+            for f in ArticleContent._meta.get_fields()
+            if f.name not in ['translations', 'pk', 'id']
+        }
         for key, value in kwargs.items():
             if key in valid_content_field_names:
                 content_fields[key] = value
@@ -147,22 +185,27 @@ class NewsBlogTestsMixin:
         # Set translated fields
         article_content.set_current_language(_language)
         article_content.title = _title
-        article_content.slug = kwargs.get('slug', None) # Allow passing slug, or let auto-slug work
+        article_content.slug = kwargs.get('slug', None)  # Allow passing slug, or let auto-slug work
         article_content.lead_in = kwargs.get('lead_in', '')
         # ... other translated fields can be added from kwargs similarly ...
 
-        article_content.save() # This creates the draft version and translations
+        article_content.save()  # This creates the draft version and translations
 
         # Explicitly create a version if one doesn't exist (diagnostic/workaround)
         from djangocms_versioning.models import Version
         from djangocms_versioning.constants import DRAFT
-        from django.contrib.contenttypes.models import ContentType
-        content_type = ContentType.objects.get_for_model(ArticleContent)
-        if not Version.objects.filter(content_type=content_type, object_id=article_content.pk).exists():
-            # Removed 'label' kwarg as it's not a valid field for Version model
-            Version.objects.create(content=article_content, created_by=_owner, state=DRAFT)
+        version = Version.objects.create(
+            content=article_content,
+            created_by=_owner,
+            state=DRAFT,
+        )
+        if is_published:
+            version.publish(_owner)
+        if publishing_date:
+            version.created = publishing_date
+            version.save(update_fields=['created'])
 
-        if content: # 'content' here refers to placeholder content string
+        if content:  # 'content' here refers to placeholder content string
             api.add_plugin(article_content.content, 'TextPlugin',
                            _language, body=content)
         return article_content
@@ -230,10 +273,14 @@ class NewsBlogTestsMixin:
         return request
 
     def setUp(self):
-        self.template = 'page.html' # Explicitly use the created test template
+        self.template = 'page.html'  # Explicitly use the created test template
         self.language = settings.LANGUAGES[0][0]
         # Use create_user to avoid potential IntegrityError with get_or_create in some test cases
-        self.user = self.create_user(username="testmixin_user", is_staff=True, is_superuser=False) # Basic user for most tests
+        self.user = self.create_user(
+            username="testmixin_user",
+            is_staff=True,
+            is_superuser=False,
+        )  # Basic user for most tests
 
         self.root_page = api.create_page(
             'root page',
@@ -274,6 +321,11 @@ class NewsBlogTestsMixin:
         """Publish page content."""
         content = PageContent.admin_manager.get(page=page, language=language)
         version = content.versions.last()
+        if version is None:
+            from djangocms_versioning.models import Version
+            from djangocms_versioning.constants import DRAFT
+
+            version = Version.objects.create(content=content, created_by=user, state=DRAFT)
         version.publish(user)
 
     def create_alias_content(self, static_code, language, category_name="test category", alias_name="test alias"):
@@ -299,12 +351,39 @@ class CleanUpMixin:
         apphook_object = self.get_apphook_object()
         self.reload_urls(apphook_object)
 
+        # Django CMS attaches a signal that creates ``PageUser`` rows whenever
+        # a ``User`` is saved when permissions are enabled.  These extra objects
+        # are unnecessary for our tests and can cause FOREIGN KEY errors when
+        # the database is reused, so disconnect the handler.
+        from cms.signals.permissions import post_save_user
+        from django.contrib.auth import get_user_model
+        from django.db.models import signals
+
+        signals.post_save.disconnect(
+            post_save_user,
+            sender=get_user_model(),
+            dispatch_uid="cms_post_save_user",
+        )
+
     def tearDown(self):
         """
         Do a proper cleanup, delete everything what is preventing us from
         clean environment for tests.
         :return: None
         """
+        from djangocms_versioning.models import Version
+        from cms.models.permissionmodels import PageUser, PageUserGroup
+
+        # Version objects reference each other via the ``source`` field using a
+        # ``PROTECT`` relationship. Deleting them in bulk triggers
+        # ``ProtectedError`` because Django tries to delete a version before the
+        # one that points to it. Break those links first and then remove the
+        # objects so teardown can proceed cleanly.
+        Version.objects.all().update(source=None)
+        Version.objects.all().delete()
+        PageUser.objects.all().delete()
+        PageUserGroup.objects.all().delete()
+
         self.app_config.delete()
         self.reset_all()
         cache.clear()
@@ -390,6 +469,9 @@ class CleanUpMixin:
         for module in url_modules:
             if module in sys.modules:
                 del sys.modules[module]
+        # Import modules again so that url patterns and apphooks are registered
+        for module in url_modules:
+            import_module(module)
 
 
 class NewsBlogTestCase(CleanUpMixin, NewsBlogTestsMixin, CMSTestCase):

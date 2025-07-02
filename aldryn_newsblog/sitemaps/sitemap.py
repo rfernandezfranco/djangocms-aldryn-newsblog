@@ -1,6 +1,6 @@
 from aldryn_translation_tools.sitemaps import I18NSitemap
 
-from ..models import ArticleContent # Changed Article to ArticleContent
+from ..models import ArticleContent  # Changed Article to ArticleContent
 
 
 class NewsBlogSitemap(I18NSitemap):
@@ -25,14 +25,14 @@ class NewsBlogSitemap(I18NSitemap):
         published_content_pks_qs = Version.objects.filter(
             content_type=content_type,
             state=PUBLISHED,
-            published__lte=timezone.now()
+            created__lte=timezone.now()
         ).values_list('object_id', flat=True).distinct()
 
         # Base queryset of published ArticleContent
         qs = ArticleContent.objects.filter(pk__in=published_content_pks_qs)
 
         if self.language is not None:
-            qs = qs.translated(self.language) # Filter by sitemap language if specified
+            qs = qs.translated(self.language)  # Filter by sitemap language if specified
 
         if self.namespace is not None:
             qs = qs.filter(article_grouper__app_config__namespace=self.namespace)
@@ -42,13 +42,13 @@ class NewsBlogSitemap(I18NSitemap):
             Version.objects.filter(
                 object_id=OuterRef('pk'),
                 content_type=content_type,
-                state=PUBLISHED # Re-iterate state for clarity, though items() already filters by published pks
-            ).order_by('-published').values('published')[:1]
+                state=PUBLISHED
+            ).order_by('-created').values('created')[:1]
         )
 
         return qs.annotate(
             version_published_date=version_published_date_subquery
-        ).order_by('-version_published_date') # Order by most recently published
+        ).order_by('-version_published_date')  # Order by most recently published
 
     def lastmod(self, obj: ArticleContent):
         # obj is an ArticleContent instance passed by sitemap framework from items()
@@ -62,7 +62,7 @@ class NewsBlogSitemap(I18NSitemap):
             try:
                 # Fetch the latest published version for this content object
                 # This is a fallback and might be less efficient than relying on annotation
-                version = Version.objects.filter_by_content(obj).filter(state=PUBLISHED).latest('published')
-                return version.published
+                version = Version.objects.filter_by_content(obj).filter(state=PUBLISHED).latest('created')
+                return version.created
             except Version.DoesNotExist:
                 return None
