@@ -96,34 +96,59 @@ class PreviewModeMixin(EditModeMixin):
     published articles should be returned.
     """
     def get_queryset(self):
-        qs = super().get_queryset()
+        # Start with an optimized queryset for ArticleContent
+        qs = self.model.objects.select_related(
+            'article_grouper__app_config',
+            'article_grouper__author',
+            'featured_image'
+        ).prefetch_related(
+            'categories',
+            'tags'
+        )
+        # The super().get_queryset() in AppConfigMixin (which ArticleListBase inherits from)
+        # would typically be self.model.objects.all(). Here, we are enhancing it.
+
         # check if user can see unpublished items. this will allow to switch
         # to edit mode instead of 404 on article detail page. CMS handles the
         # permissions.
         user = self.request.user
         user_can_edit = user.is_staff or user.is_superuser
-        if not (self.edit_mode or user_can_edit):
-            # Relying on djangocms-versioning's default manager to filter for published versions.
-            # If user_can_edit or in edit_mode, versioning system may show drafts.
-            pass  # No explicit filtering here if default manager is version-aware.
+        # The actual filtering by published state is now primarily handled by the
+        # version_published_date annotation and exclude below for non-edit/non-staff users.
+        # djangocms-versioning's default manager might also apply filtering if not overridden.
+
         language = translation.get_language()
         if hasattr(self, 'namespace') and self.namespace:
             qs = qs.filter(article_grouper__app_config__namespace=self.namespace)
+
+        # Apply active_translations after initial filtering and select/prefetch related
+        # to ensure translations are correctly handled for the filtered set.
         qs = qs.active_translations(language)
 
         # Order the queryset by the creation date of the published version so
         # pagination is deterministic across CMS versions.
-        content_type = ContentType.objects.get_for_model(ArticleContent)
+        # This also effectively filters for published articles for non-staff/non-edit mode users.
+        content_type = ContentType.objects.get_for_model(ArticleContent) # ArticleContent is self.model
+
+        # Subquery for published date
         published_date_sq = Version.objects.filter(
             object_id=OuterRef('pk'),
-            content_type=content_type,
+            content_type=content_type, # Use ContentType of self.model
             state=PUBLISHED,
-        ).values('created')[:1]
+        ).values('created')[:1] # Get the latest publish date if multiple (should not happen for PUBLISHED state)
+
         qs = qs.annotate(
             version_published_date=Subquery(published_date_sq)
-        ).exclude(
-            version_published_date__isnull=True
-        ).order_by('-version_published_date')
+        )
+
+        if not (self.edit_mode or user_can_edit):
+            # For regular users, only show items that have a published version.
+            qs = qs.exclude(version_published_date__isnull=True)
+
+        # Always order by published date for consistency in public view.
+        # In edit mode, other orderings might be considered, but this provides a stable default.
+        qs = qs.order_by('-version_published_date', '-pk') # Added '-pk' for deterministic secondary sort
+
         return qs
 
 

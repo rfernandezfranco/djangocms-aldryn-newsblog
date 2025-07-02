@@ -3,7 +3,7 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, models
-from django.db.models import OuterRef, Subquery
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from djangocms_versioning.constants import PUBLISHED
@@ -462,46 +462,32 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         content_type_ac = ContentType.objects.get_for_model(ArticleContent)
         edit_mode = self.get_edit_mode(request)
 
-        # Get all Person objects who are authors of at least one ArticleGrouper in this app_config
-        authors_qs = Person.objects.filter(
-            articlegrouper__app_config=self.app_config
-        ).distinct()
+        # Subquery to get PKs of ArticleContent that are PUBLISHED and belong to this app_config
+        # Note: Current logic counts published for both edit and non-edit mode.
+        # If edit_mode requires counting *all* articles, this subquery would need adjustment for that mode.
+        published_content_pks_subquery = Subquery(
+            ArticleContent.objects.filter(
+                article_grouper__app_config=self.app_config,
+                cmsversion__content_type=content_type_ac,
+                cmsversion__state=PUBLISHED
+            ).values('pk')
+        )
 
-        annotated_authors = []
-        for author in authors_qs:
-            # For each author, count their published ArticleContent versions within this app_config.
-            # A content is considered published if it has a Version in PUBLISHED state.
+        authors_with_counts = Person.objects.filter(
+            articlegrouper__app_config=self.app_config, # Ensures author is related to this app_config
+            articlegrouper__contents__pk__in=published_content_pks_subquery # Ensures author has published content
+        ).annotate(
+            article_count=Count(
+                'articlegrouper__contents',
+                filter=Q(articlegrouper__contents__pk__in=published_content_pks_subquery)
+            )
+        ).filter(article_count__gt=0).order_by('-article_count', 'name').distinct()
+        # 'name' is a field on the Person model (or its translation).
+        # Assuming Person model has a 'name' field for ordering. If it's translated,
+        # ordering might need 'translations__name' if Person is a TranslatableModel.
+        # For aldryn-people, Person itself is not translatable by default, but has name fields.
 
-            # Subquery to find PKs of ArticleContent by this author in this app_config
-            content_pks_by_author_for_appconfig = ArticleContent.objects.filter(
-                article_grouper__author=author,
-                article_grouper__app_config=self.app_config
-            ).values_list('pk', flat=True)
-
-            if edit_mode:
-                # In edit mode, count could include all versions or be based on some other logic.
-                # For simplicity and consistency with original intent of showing published counts,
-                # let's stick to published counts even in edit mode for now, unless requirements differ.
-                # Or, count all content if that's the desired edit-mode behavior.
-                # The original raw SQL didn't significantly change query for edit mode beyond base subquery.
-                # Let's count published versions for now.
-                count = CMSVersion.objects.filter(
-                    content_type=content_type_ac,
-                    object_id__in=content_pks_by_author_for_appconfig,
-                    state=PUBLISHED
-                ).count()
-            else:  # Not in edit mode, only count PUBLISHED versions
-                count = CMSVersion.objects.filter(
-                    content_type=content_type_ac,
-                    object_id__in=content_pks_by_author_for_appconfig,
-                    state=PUBLISHED
-                ).count()
-
-            if count > 0:
-                author.article_count = count  # Annotate instance
-                annotated_authors.append(author)
-
-        return sorted(annotated_authors, key=lambda x: x.article_count, reverse=True)
+        return list(authors_with_counts)
 
     def __str__(self):
         return gettext('%s authors') % (self.app_config.get_app_title(), )
@@ -520,42 +506,32 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         then it will be all articles.
         """
         # Using top-level imports: CMSVersion, PUBLISHED
-
         content_type_ac = ContentType.objects.get_for_model(ArticleContent)
-        edit_mode = self.get_edit_mode(request)
+        # edit_mode = self.get_edit_mode(request) # Not changing edit_mode counting logic for now
 
-        # Get all Categories that are used by ArticleContent in this app_config
-        categories_qs = Category.objects.filter(
-            articlecontent__article_grouper__app_config=self.app_config
-        ).distinct()
+        # Subquery to get PKs of ArticleContent that are PUBLISHED and belong to this app_config
+        published_content_pks_subquery = Subquery(
+            ArticleContent.objects.filter(
+                article_grouper__app_config=self.app_config,
+                cmsversion__content_type=content_type_ac,
+                cmsversion__state=PUBLISHED
+            ).values('pk')
+        )
 
-        annotated_categories = []
-        for category in categories_qs:
-            # For each category, count its published ArticleContent versions within this app_config.
-            content_pks_in_category_for_appconfig = ArticleContent.objects.filter(
-                categories=category,
-                article_grouper__app_config=self.app_config
-            ).values_list('pk', flat=True)
+        categories_with_counts = Category.objects.filter(
+            # Ensure the category is used by articles in this app_config
+            articlecontent__article_grouper__app_config=self.app_config,
+            # Ensure the category is used by published articles
+            articlecontent__pk__in=published_content_pks_subquery
+        ).annotate(
+            article_count=Count(
+                'articlecontent',
+                filter=Q(articlecontent__pk__in=published_content_pks_subquery)
+            )
+        ).filter(article_count__gt=0).order_by('-article_count', 'pk').distinct()
+        # Ordering by 'pk' as a secondary sort for consistency.
 
-            if edit_mode:
-                # Similar to get_authors, sticking to published counts for now.
-                count = CMSVersion.objects.filter(
-                    content_type=content_type_ac,
-                    object_id__in=content_pks_in_category_for_appconfig,
-                    state=PUBLISHED
-                ).count()
-            else:  # Not in edit mode
-                count = CMSVersion.objects.filter(
-                    content_type=content_type_ac,
-                    object_id__in=content_pks_in_category_for_appconfig,
-                    state=PUBLISHED
-                ).count()
-
-            if count > 0:
-                category.article_count = count  # Annotate instance
-                annotated_categories.append(category)
-
-        return sorted(annotated_categories, key=lambda x: x.article_count, reverse=True)
+        return list(categories_with_counts)
 
 
 class NewsBlogFeaturedArticlesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
@@ -569,7 +545,14 @@ class NewsBlogFeaturedArticlesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         if not self.article_count:
             return ArticleContent.objects.none()
 
-        queryset = ArticleContent.objects.filter(
+        queryset = ArticleContent.objects.select_related(
+            'article_grouper__app_config',
+            'article_grouper__author',
+            'featured_image'
+        ).prefetch_related(
+            'categories',
+            'tags'
+        ).filter(
             article_grouper__app_config=self.app_config,
             is_featured=True
         )
@@ -639,7 +622,11 @@ class NewsBlogLatestArticlesPlugin(PluginEditModeMixin,
         edit_mode = self.get_edit_mode(request)
 
         # Base queryset for ArticleContent in the correct app_config and language
-        base_queryset = ArticleContent.objects.filter(
+        base_queryset = ArticleContent.objects.select_related(
+            'article_grouper__app_config',
+            'article_grouper__author',
+            'featured_image'
+        ).filter(
             article_grouper__app_config=self.app_config
         ).translated(*languages)
 
@@ -719,7 +706,14 @@ class NewsBlogRelatedPlugin(PluginEditModeMixin, AdjustableCacheModelMixin,
 
         related_groupers = article.related.all()
 
-        queryset = ArticleContent.objects.filter(
+        queryset = ArticleContent.objects.select_related(
+            'article_grouper__app_config',
+            'article_grouper__author',
+            'featured_image'
+        ).prefetch_related(
+            'categories',
+            'tags'
+        ).filter(
             article_grouper__in=related_groupers
         ).translated(*languages) # Apply language filter first
 
