@@ -9,7 +9,7 @@ from menus.menu_pool import menu_pool
 
 from aldryn_newsblog.compat import toolbar_edit_mode_active
 
-from .models import Article
+from .models import ArticleContent
 
 
 class NewsBlogMenu(CMSAttachMenu):
@@ -17,9 +17,21 @@ class NewsBlogMenu(CMSAttachMenu):
 
     def get_queryset(self, request):
         """Returns base queryset with support for preview-mode."""
-        queryset = Article.objects
+        queryset = ArticleContent.objects
         if not (request.toolbar and toolbar_edit_mode_active(request)):
-            queryset = queryset.published()
+            from django.contrib.contenttypes.models import ContentType
+            from djangocms_versioning.models import Version
+            from djangocms_versioning.constants import PUBLISHED
+            from django.utils import timezone
+            from django.db.models import Subquery
+
+            content_type = ContentType.objects.get_for_model(ArticleContent)
+            published_pks = Version.objects.filter(
+                content_type=content_type,
+                state=PUBLISHED,
+                created__lte=timezone.now(),
+            ).values_list('object_id', flat=True).distinct()
+            queryset = queryset.filter(pk__in=Subquery(published_pks))
         return queryset
 
     def get_nodes(self, request):
