@@ -18,6 +18,7 @@ from cms.exceptions import AppAlreadyRegistered
 from cms.models import PageContent
 from cms.test_utils.testcases import CMSTestCase, TransactionCMSTestCase
 from cms.toolbar.toolbar import CMSToolbar
+from django.utils import timezone
 
 from aldryn_categories.models import Category
 from aldryn_people.models import Person
@@ -202,6 +203,8 @@ class NewsBlogTestsMixin:
         if is_published:
             version.publish(_owner)
         if publishing_date:
+            if timezone.is_naive(publishing_date):
+                publishing_date = timezone.make_aware(publishing_date, timezone.utc)
             version.created = publishing_date
             version.save(update_fields=['created'])
 

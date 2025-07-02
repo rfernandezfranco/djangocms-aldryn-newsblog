@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from django.utils import timezone
 
 from django.db.models import Q
 from django.http import (
@@ -567,6 +568,8 @@ class DateRangeArticleList(ArticleListBase):
 class YearArticleList(DateRangeArticleList):
     def _daterange_from_kwargs(self, kwargs):
         date_from = datetime(int(kwargs['year']), 1, 1)
+        if timezone.is_naive(date_from):
+            date_from = timezone.make_aware(date_from)
         date_to = date_from + relativedelta(years=1)
         return date_from, date_to
 
@@ -574,6 +577,8 @@ class YearArticleList(DateRangeArticleList):
 class MonthArticleList(DateRangeArticleList):
     def _daterange_from_kwargs(self, kwargs):
         date_from = datetime(int(kwargs['year']), int(kwargs['month']), 1)
+        if timezone.is_naive(date_from):
+            date_from = timezone.make_aware(date_from)
         date_to = date_from + relativedelta(months=1)
         return date_from, date_to
 
@@ -582,5 +587,7 @@ class DayArticleList(DateRangeArticleList):
     def _daterange_from_kwargs(self, kwargs):
         date_from = datetime(
             int(kwargs['year']), int(kwargs['month']), int(kwargs['day']))
+        if timezone.is_naive(date_from):
+            date_from = timezone.make_aware(date_from)
         date_to = date_from + relativedelta(days=1)
         return date_from, date_to
