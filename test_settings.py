@@ -6,6 +6,7 @@ import os
 import sys
 
 from django import get_version
+from django.utils import encoding as django_encoding
 
 from cms import __version__ as cms_string_version
 
@@ -14,6 +15,18 @@ from looseversion import LooseVersion
 
 django_version = LooseVersion(get_version())
 cms_version = LooseVersion(cms_string_version)
+
+# Compatibility for packages still importing force_text from Django 5
+if not hasattr(django_encoding, "force_text"):
+    django_encoding.force_text = django_encoding.force_str
+
+try:
+    import importlib
+    importlib.import_module("django.utils.six")  # pragma: no cover - used by old libs
+except Exception:  # pragma: no cover - fallback for Django>=3
+    import six
+    sys.modules["django.utils.six"] = six
+    sys.modules["django.utils.six.moves"] = six.moves
 
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
