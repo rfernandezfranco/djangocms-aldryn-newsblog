@@ -460,7 +460,9 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         # Using top-level imports: CMSVersion, PUBLISHED
 
         content_type_ac = ContentType.objects.get_for_model(ArticleContent)
-        edit_mode = self.get_edit_mode(request)
+        languages = get_valid_languages_from_request(
+            self.app_config.namespace, request
+        )
 
         # Subquery to get PKs of ArticleContent that are PUBLISHED and belong to this app_config
         # Note: Current logic counts published for both edit and non-edit mode.
@@ -468,23 +470,30 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         published_content_pks_subquery = Subquery(
             ArticleContent.objects.filter(
                 article_grouper__app_config=self.app_config,
-                cmsversion__content_type=content_type_ac,
-                cmsversion__state=PUBLISHED
+                versions__content_type=content_type_ac,
+                versions__state=PUBLISHED
             ).values('pk')
         )
 
-        authors_with_counts = Person.objects.filter(
-            articlegrouper__app_config=self.app_config, # Ensures author is related to this app_config
-            articlegrouper__contents__pk__in=published_content_pks_subquery # Ensures author has published content
-        ).annotate(
-            article_count=Count(
-                'articlegrouper__contents',
-                filter=Q(articlegrouper__contents__pk__in=published_content_pks_subquery)
+        authors_with_counts = (
+            Person.objects.active_translations(languages[0])
+            .filter(
+                articlegrouper__app_config=self.app_config,
+                articlegrouper__contents__pk__in=published_content_pks_subquery,
             )
-        ).filter(article_count__gt=0).order_by('-article_count', 'name').distinct()
-        # 'name' is a field on the Person model (or its translation).
-        # Assuming Person model has a 'name' field for ordering. If it's translated,
-        # ordering might need 'translations__name' if Person is a TranslatableModel.
+            .annotate(
+                article_count=Count(
+                    'articlegrouper__contents',
+                    filter=Q(articlegrouper__contents__pk__in=published_content_pks_subquery),
+                )
+            )
+            .filter(article_count__gt=0)
+            .order_by('-article_count', 'translations__name')
+            .distinct()
+        )
+# 'name' is a field on the Person translation model.
+# Ordering uses 'translations__name' so authors with the same article_count
+# appear alphabetically in the current language.
         # For aldryn-people, Person itself is not translatable by default, but has name fields.
 
         return list(authors_with_counts)
@@ -505,31 +514,36 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         publishing_date has passed. If the user is a logged-in cms operator,
         then it will be all articles.
         """
-        # Using top-level imports: CMSVersion, PUBLISHED
         content_type_ac = ContentType.objects.get_for_model(ArticleContent)
-        # edit_mode = self.get_edit_mode(request) # Not changing edit_mode counting logic for now
+        languages = get_valid_languages_from_request(
+            self.app_config.namespace, request)
 
-        # Subquery to get PKs of ArticleContent that are PUBLISHED and belong to this app_config
         published_content_pks_subquery = Subquery(
             ArticleContent.objects.filter(
                 article_grouper__app_config=self.app_config,
-                cmsversion__content_type=content_type_ac,
-                cmsversion__state=PUBLISHED
+                versions__content_type=content_type_ac,
+                versions__state=PUBLISHED
             ).values('pk')
         )
 
-        categories_with_counts = Category.objects.filter(
-            # Ensure the category is used by articles in this app_config
-            articlecontent__article_grouper__app_config=self.app_config,
-            # Ensure the category is used by published articles
-            articlecontent__pk__in=published_content_pks_subquery
-        ).annotate(
-            article_count=Count(
-                'articlecontent',
-                filter=Q(articlecontent__pk__in=published_content_pks_subquery)
+        categories_with_counts = (
+            Category.objects.active_translations(languages[0])
+            .filter(
+                articlecontent__article_grouper__app_config=self.app_config,
+                articlecontent__pk__in=published_content_pks_subquery,
             )
-        ).filter(article_count__gt=0).order_by('-article_count', 'pk').distinct()
-        # Ordering by 'pk' as a secondary sort for consistency.
+            .annotate(
+                article_count=Count(
+                    'articlecontent',
+                    filter=Q(articlecontent__pk__in=published_content_pks_subquery),
+                )
+            )
+            .filter(article_count__gt=0)
+            .order_by('-article_count', 'translations__name')
+            .distinct()
+        )
+        # Ordering uses translations__name so categories with the same count
+        # appear alphabetically in the current language.
 
         return list(categories_with_counts)
 
