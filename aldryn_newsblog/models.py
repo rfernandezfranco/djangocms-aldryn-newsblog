@@ -7,14 +7,14 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.encoding import force_str
-from django.utils.timezone import now
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import override
+import warnings
 
 from cms.models.fields import PlaceholderField
 from cms.models.pluginmodel import CMSPlugin
-from cms.utils.i18n import get_current_language, get_redirect_on_fallback
+from cms.utils.i18n import get_current_language
 
 from aldryn_apphooks_config.fields import AppHookConfigField
 from aldryn_categories.fields import CategoryManyToManyField
@@ -28,13 +28,14 @@ from filer.fields.image import FilerImageField
 from parler.models import TranslatableModel, TranslatedFields
 from sortedm2m.fields import SortedManyToManyField
 from taggit.managers import TaggableManager
-from taggit.models import Tag
+
+from parler.utils.context import switch_language
+from cms.api import copy_plugins_to_placeholder
 
 from aldryn_newsblog.compat import toolbar_edit_mode_active
 from aldryn_newsblog.utils.utilities import get_valid_languages_from_request
 
 from .cms_appconfig import NewsBlogConfig
-from .managers import RelatedManager
 from .utils import get_plugin_index_data, get_request, strip_tags
 
 
@@ -134,7 +135,7 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             help_text=_(
                 'Used in the URL. If changed, the URL will change. '
                 'Clear it to have it re-created automatically.'),
-            unique=False, # Unique per language AND grouper is handled by meta
+            unique=False,  # Unique per language AND grouper is handled by meta
         ),
         lead_in=HTMLField(
             verbose_name=_('lead'), default='',
@@ -193,12 +194,47 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
 
     # objects = RelatedManager() # Commented out, to be reviewed
 
+    def safe_get_translation(self, language_code, any_language=False):
+        """Return the translated instance for ``language_code`` or ``None``.
+
+        This helper mirrors the ``safe_translation_getter`` API but returns
+        the full translation object instead of a single field value.  If the
+        translation for ``language_code`` doesn't exist and ``any_language`` is
+        True, the first available translation will be returned instead.
+        """
+        try:
+            return self.get_translation(language_code)
+        except self.translations.model.DoesNotExist:
+            if any_language:
+                for lang in self.get_available_languages():
+                    try:
+                        return self.get_translation(lang)
+                    except self.translations.model.DoesNotExist:
+                        continue
+        return None
+
+    def _get_slug_queryset(self, lookup_model=None):
+        """Return a queryset for slug uniqueness checks."""
+        language = self.get_current_language() or settings.LANGUAGE_CODE
+        if lookup_model is None:
+            lookup_model = self.__class__
+        manager = getattr(lookup_model, '_original_manager', lookup_model.objects)
+        qs = manager.language(language)
+        if not self.slug_globally_unique:
+            qs = qs.filter(
+                translations__language_code=language,
+                article_grouper=self.article_grouper,
+            )
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        return qs
+
     class Meta:
         # Publishing date is no longer on this model. Versioning will handle published state.
         # Ordering might be by grouper's creation date or ID, or by version's publish date.
         # For now, let's use grouper's PK.
-        ordering = ['-article_grouper__pk'] # Placeholder ordering
-        # unique_together = (('article_grouper', 'slug'),) # Removed due to system check errors
+        ordering = ['-article_grouper__pk']  # Placeholder ordering
+        # unique_together = (('article_grouper', 'slug'),)  # Removed due to system check errors
 
     # Removed published and future properties as they depended on fields now removed.
 
@@ -217,7 +253,7 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
         # django.urls.reverse is already imported
 
         if not language:
-            language = get_current_language() # Ensure language is set first
+            language = get_current_language()  # Ensure language is set first
 
         publishing_date_for_url = None
         try:
@@ -226,17 +262,16 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             # For now, assuming Version.objects.get_for_content(self) is appropriate to get the
             # version record that corresponds to this specific ArticleContent instance.
             version = Version.objects.get_for_content(self)
-            if version.state == PUBLISHED and version.published:
-                publishing_date_for_url = version.published.date()
+            if version.state == PUBLISHED:
+                publishing_date_for_url = version.created.date()
             else:
-                # Not a published version, or no specific publish date on the version record.
                 # No canonical public URL for non-published content.
                 return None
         except Version.DoesNotExist:
             # No version object at all for this content. Cannot determine published state or date.
             return None
 
-        if publishing_date_for_url is None: # Should be caught by above, but as a safeguard
+        if publishing_date_for_url is None:  # Should be caught by above, but as a safeguard
             return None
 
         # Current permalink_type and kwargs logic based on publishing_date can remain,
@@ -262,26 +297,23 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             slug_val, lang_val = self.known_translation_getter(
                 'slug', default=None, language_code=language
             )
-            if slug_val is None: # If slug is None for the current language, cannot form URL
+            if slug_val is None:  # If slug is None for the current language, cannot form URL
                 return None
             # The original logic for redirect_on_fallback and changing language variable here
             # can be complex and might interact with how Parler/CMS handle language in URLs.
             # For now, just use the slug for the requested language.
             kwargs.update(slug=slug_val)
 
-        if not kwargs: # If no kwargs were populated (e.g. permalink_type was empty or only 's' but no slug)
-            return None # Cannot form a URL
+        if not kwargs:  # If no kwargs were populated (e.g. permalink_type was empty or only 's' but no slug)
+            return None  # Cannot form a URL
 
         if self.article_grouper.app_config and self.article_grouper.app_config.namespace:
             namespace_str = f'{self.article_grouper.app_config.namespace}:'
         else:
             namespace_str = ''
 
-        try:
-            with override(language): # Ensure correct language context for reverse
-                url = reverse(f'{namespace_str}article-detail', kwargs=kwargs)
-        except NoReverseMatch:
-            return None # If URL cannot be reversed (e.g. bad slug, or no pattern matches for kwargs)
+        with override(language):  # Ensure correct language context for reverse
+            url = reverse(f'{namespace_str}article-detail', kwargs=kwargs)
 
         return url
 
@@ -314,8 +346,11 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
     def save(self, *args, **kwargs):
         # Update the search index
         if self.update_search_on_save:
-            # Ensure to pass the current language to get_search_data
-            current_language = self.get_current_language() if hasattr(self, 'get_current_language') else get_current_language()
+            current_language = (
+                self.get_current_language()
+                if hasattr(self, "get_current_language")
+                else get_current_language()
+            )
             self.search_data = self.get_search_data(language=current_language)
 
         # Author creation logic is removed from here.
@@ -323,6 +358,17 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
 
         # slug would be generated by TranslatedAutoSlugifyMixin
         super().save(*args, **kwargs)
+
+        if self.update_search_on_save and not self.safe_get_translation(current_language).search_data:
+            # When creating a new article, the translation may not yet have a
+            # search_data value. Compute it after the initial save to ensure the
+            # field gets stored correctly.
+            self.search_data = self.get_search_data(language=current_language)
+            # Temporarily disable the automatic update to avoid recursion
+            orig_flag = self.update_search_on_save
+            self.update_search_on_save = False
+            super().save()
+            self.update_search_on_save = orig_flag
 
     def __str__(self):
         return self.safe_translation_getter('title', any_language=True)
@@ -409,7 +455,6 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         """
 
         # The basic subquery (for logged-in content managers in edit mode)
-        from django.db.models import Count, Q
         from djangocms_versioning.constants import PUBLISHED
         from djangocms_versioning.models import Version
 
@@ -444,7 +489,7 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
                     object_id__in=content_pks_by_author_for_appconfig,
                     state=PUBLISHED
                 ).count()
-            else: # Not in edit mode, only count PUBLISHED versions
+            else:  # Not in edit mode, only count PUBLISHED versions
                 count = Version.objects.filter(
                     content_type=content_type_ac,
                     object_id__in=content_pks_by_author_for_appconfig,
@@ -474,7 +519,6 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         then it will be all articles.
         """
 
-        from django.db.models import Count, Q
         from djangocms_versioning.constants import PUBLISHED
         from djangocms_versioning.models import Version
 
@@ -501,7 +545,7 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
                     object_id__in=content_pks_in_category_for_appconfig,
                     state=PUBLISHED
                 ).count()
-            else: # Not in edit mode
+            else:  # Not in edit mode
                 count = Version.objects.filter(
                     content_type=content_type_ac,
                     object_id__in=content_pks_in_category_for_appconfig,
@@ -509,7 +553,7 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
                 ).count()
 
             if count > 0:
-                category.article_count = count # Annotate instance
+                category.article_count = count  # Annotate instance
                 annotated_categories.append(category)
 
         return sorted(annotated_categories, key=lambda x: x.article_count, reverse=True)
@@ -536,7 +580,7 @@ class NewsBlogFeaturedArticlesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         languages = get_valid_languages_from_request(
             self.app_config.namespace, request)
         if self.language not in languages:
-            return queryset.none() # Return empty from the current queryset
+            return queryset.none()  # Return empty from the current queryset
 
         queryset = queryset.translated(*languages)
 
@@ -653,22 +697,28 @@ class NewsBlogRelatedPlugin(PluginEditModeMixin, AdjustableCacheModelMixin,
         if self.language not in languages:
             return ArticleContent.objects.none()
 
-        related_groupers = article.related.all() # QuerySet of ArticleGrouper
+        related_groupers = article.related.all()  # QuerySet of ArticleGrouper
 
-        # Placeholder: Fetch published ArticleContent versions for these groupers.
-        # This is a conceptual query.
-        # queryset = ArticleContent.objects.filter(
-        #     article_grouper__in=related_groupers
-        # ).translated(*languages)
-        # if not self.get_edit_mode(request):
-        #     ct = ContentType.objects.get_for_model(ArticleContent)
-        #     published_pks = Version.objects.filter(
-        #         content_type=ct, object_id__in=queryset.values('pk'), state=PUBLISHED
-        #     ).values_list('object_id', flat=True)
-        #     queryset = queryset.filter(pk__in=published_pks)
-        # return queryset
-        # For now, returning all contents of related groupers, not filtered by publish state
-        return ArticleContent.objects.filter(article_grouper__in=related_groupers).translated(*languages)
+        # Start with all contents from the related groupers in the plugin's
+        # language.
+        queryset = ArticleContent.objects.filter(
+            article_grouper__in=related_groupers
+        ).translated(*languages)
+
+        if not self.get_edit_mode(request):
+            from django.contrib.contenttypes.models import ContentType
+            from djangocms_versioning.constants import PUBLISHED
+            from djangocms_versioning.models import Version
+
+            ct = ContentType.objects.get_for_model(ArticleContent)
+            published_pks = Version.objects.filter(
+                content_type=ct,
+                object_id__in=queryset.values("pk"),
+                state=PUBLISHED,
+            ).values_list("object_id", flat=True)
+            queryset = queryset.filter(pk__in=published_pks)
+
+        return queryset
 
     def __str__(self):
         return gettext('Related articles')
@@ -686,7 +736,7 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         """
         # Attempting ORM-based logic for versioning:
         from django.contrib.contenttypes.models import ContentType
-        from django.db.models import Count, Subquery, OuterRef
+        from django.db.models import Count, Q, Subquery
         from djangocms_versioning.constants import PUBLISHED
         from djangocms_versioning.models import Version
         from taggit.models import Tag, TaggedItem
@@ -701,7 +751,7 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
             Version.objects.filter(
                 content_type=content_type_ac,
                 state=PUBLISHED,
-                published__lte=timezone.now()
+                created__lte=timezone.now()
             ).filter(
                 object_id__in=ArticleContent.objects.filter(
                     article_grouper__app_config=self.app_config
@@ -720,18 +770,24 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         # 3. Annotate Tags with counts of these relevant_tagged_items.
         # We only want tags that are associated with at least one of these relevant items.
         tags_with_counts = Tag.objects.filter(
-            taggeditem_items__pk__in=relevant_tagged_item_pks # Filter tags that are part of relevant items
+            taggit_taggeditem_items__pk__in=relevant_tagged_item_pks,  # Filter tags that are part of relevant items
         ).annotate(
-            num_articles=Count('taggeditem_items', filter=Q(taggeditem_items__pk__in=relevant_tagged_item_pks))
-            # Count only the tagged items that are relevant (published, correct app_config, etc.)
-        ).filter(num_articles__gt=0).order_by('-num_articles', 'name') # Filter out tags with no articles after versioning filter
+            num_articles=Count(
+                'taggit_taggeditem_items',
+                filter=Q(taggit_taggeditem_items__pk__in=relevant_tagged_item_pks),
+            )  # Count only the tagged items that are relevant (published, correct app_config, etc.)
+        ).filter(num_articles__gt=0).order_by(
+            '-num_articles', 'name'
+        )  # Filter out tags with no articles after versioning filter
 
         # The above annotation should correctly count only the pre-filtered relevant_tagged_item_pks.
         # If performance is an issue or it's incorrect, the python loop below is a fallback.
         # For now, let's trust the annotation if possible.
 
         # Fallback Python-side counting (if complex annotation fails or is too slow):
-        # relevant_tags_qs = Tag.objects.filter(pk__in=relevant_tagged_item_pks.values_list('tag_id', flat=True).distinct())
+        # relevant_tags_qs = Tag.objects.filter(
+        #     pk__in=relevant_tagged_item_pks.values_list('tag_id', flat=True).distinct()
+        # )
         # final_tags_with_counts = []
         # for tag in relevant_tags_qs:
         #     count = TaggedItem.objects.filter(
@@ -743,7 +799,11 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         #         final_tags_with_counts.append(tag)
         # return sorted(final_tags_with_counts, key=lambda t: (-t.num_articles, t.name))
 
-        return list(tags_with_counts)
+        final_tags = []
+        for tag in tags_with_counts:
+            tag.article_count = tag.num_articles
+            final_tags.append(tag)
+        return final_tags
 
     def __str__(self):
         return gettext('%s tags') % (self.app_config.get_app_title(), )
@@ -758,29 +818,32 @@ def update_search_data(sender, instance, **kwargs):
     """
     is_cms_plugin = issubclass(instance.__class__, CMSPlugin)
 
-    if ArticleContent.update_search_on_save and is_cms_plugin: # Changed Article to ArticleContent
-        placeholder = (getattr(instance, '_placeholder_cache', None) or  # noqa: W504
-                       instance.placeholder)
+    if ArticleContent.update_search_on_save and is_cms_plugin:  # Changed Article to ArticleContent
+        placeholder = (
+            getattr(instance, '_placeholder_cache', None) or instance.placeholder
+        )  # noqa: W504
         if hasattr(placeholder, '_attached_model_cache'):
-            if placeholder._attached_model_cache == ArticleContent: # Changed Article to ArticleContent
+            if placeholder._attached_model_cache == ArticleContent:  # Changed Article to ArticleContent
                 try:
                     # Ensure placeholder.pk is valid if placeholder comes from a just deleted plugin
                     if placeholder and placeholder.pk:
-                        article_content = placeholder._attached_model_cache.objects.language( # Renamed variable
-                            instance.language).get(content=placeholder.pk)
+                        article_content = placeholder._attached_model_cache.objects.language(
+                            instance.language
+                        ).get(content=placeholder.pk)
                         current_language = instance.language or get_current_language()
-                        # Pass request if available, needed by get_plugin_index_data
+                        # Pass request if available, needed by get_plugin_index_data.
                         # This might be problematic if request is not easily available here.
                         # Consider if get_search_data truly needs request or can work without it.
-                        article_content.search_data = article_content.get_search_data(current_language, request=get_request())
+                        article_content.search_data = article_content.get_search_data(
+                            current_language,
+                            request=get_request(),
+                        )
                         article_content.save()
                 except ArticleContent.DoesNotExist:
-                    pass # ArticleContent might have been deleted
+                    pass  # ArticleContent might have been deleted
 
 
 # Full implementation of the article_content_copy function
-from parler.utils.context import switch_language
-from cms.api import add_plugin
 
 def article_content_copy(original_content, user=None):
     """
@@ -807,13 +870,13 @@ def article_content_copy(original_content, user=None):
                 new_content.title = original_translation.title
                 # Slug is regenerated by TranslatedAutoSlugifyMixin if set to None or if it conflicts.
                 # If exact copy is needed and might conflict, this needs more sophisticated handling.
-                new_content.slug = None # Let it regenerate to avoid immediate unique constraint issues
+                new_content.slug = None  # Let it regenerate to avoid immediate unique constraint issues
                 new_content.lead_in = original_translation.lead_in
                 new_content.meta_title = original_translation.meta_title
                 new_content.meta_description = original_translation.meta_description
                 new_content.meta_keywords = original_translation.meta_keywords
                 # search_data is auto-generated on save by get_search_data() if update_search_on_save is True
-            new_content.save() # This save will also trigger TranslatedAutoSlugifyMixin for slug
+            new_content.save()  # This save will also trigger TranslatedAutoSlugifyMixin for slug
 
     # 3. Copy featured_image (FilerImageField - ForeignKey)
     if original_content.featured_image:
@@ -823,63 +886,66 @@ def article_content_copy(original_content, user=None):
         # So, an explicit save on the main model for FKs is safer.
         new_content.save(update_fields=['featured_image'])
 
-
     # 4. Copy ManyToMany Relationships (after new_content has a PK)
     new_content.categories.set(original_content.categories.all())
     new_content.tags.set(original_content.tags.all())
-    new_content.related.set(original_content.related.all()) # related points to ArticleGrouper
+    new_content.related.set(original_content.related.all())  # related points to ArticleGrouper
 
-    # 5. Copy PlaceholderField ('content')
-    # FIXME #VERSIONING: Placeholder content copying.
-    # The current logic iterates through top-level plugins in the original placeholder
-    # and uses `cms.api.add_plugin` to add them to the new placeholder. This relies on:
-    # 1. Each plugin type correctly implementing its `copy_relations` method if it has
-    #    custom data or child plugins that need deep copying (e.g., by handling the `source_plugin`
-    #    argument passed to `copy_relations` by `cms.api.add_plugin` when `target_placeholder` is specified).
-    # 2. `add_plugin` sufficiently handling the recreation for standard cases by passing attributes.
-    # Limitations:
-    # - Deeply nested plugins: `add_plugin` itself does not recursively copy child plugins.
-    #   If a plugin has children, its `copy_relations` method (or equivalent logic if not using `copy_relations` directly)
-    #   must handle copying its children. Standard CMS plugins usually do this. Custom or third-party plugins might not.
-    # - Custom plugin data: If a plugin stores data in related models not automatically
-    #   handled by a simple field copy or its `copy_relations`, that data won't be copied.
-    # - Plugin instance fields vs. attributes: Ensure all relevant data is passed via
-    #   `**plugin_base.attributes` or copied manually if stored as direct fields on the
-    #   plugin model instance and not handled by `copy_relations`. The `attributes` dictionary
-    #   should contain all serializable fields of the plugin instance.
-    # For a more universally robust solution, especially with diverse or complex third-party plugins,
-    # `cms.api.copy_plugins_to_placeholder(original_placeholder, new_placeholder)` could be considered,
-    # as it's designed for deep, faithful copies of entire placeholder contents, including structure.
-    # However, this requires ensuring that all plugins involved are compatible with this API.
-    # The current approach is a common pattern for basic placeholder copying.
+    # 5. Copy placeholder plugins.
+    # ``copy_plugins_to_placeholder`` handles most plugin types; warn if either
+    # placeholder is missing.
     original_placeholder = original_content.content
-    new_placeholder = new_content.content # Accessing it should ensure it exists or is created
+    new_placeholder = new_content.content  # Accessing it should ensure it exists or is created
 
     if original_placeholder and new_placeholder:
-        # It's generally safer to clear the new placeholder if it might have default plugins,
-        # though for a fresh instance via _original_manager.create(), it should be empty.
         new_placeholder.clear()
-        plugins = original_placeholder.get_plugins_list() # Gets only top-level plugins
-        for plugin_base in plugins:
-            # Create a new plugin instance by copying from the original.
-            # The `add_plugin` API will call the plugin's `copy_relations` method
-            # if `source_plugin` is provided, which can handle child plugins and other relations.
-            # However, we are iterating only top-level plugins here.
-            # A more robust copy would use cms.api.copy_plugins_to_placeholder.
-            # For now, this copies top-level plugins and their direct data.
-            add_plugin(
-                placeholder=new_placeholder,
-                plugin_type=plugin_base.plugin_type,
-                language=plugin_base.language,
-                # Pass attributes from original plugin. Ensure all necessary fields are included.
-                # This relies on plugin_base.attributes being comprehensive.
-                **plugin_base.attributes
-            )
-            # The previous FIXME about recursive copy is now part of the main comment above.
+        plugins = original_placeholder.get_plugins_list()
+        copy_plugins_to_placeholder(plugins, new_placeholder)
     else:
         if not original_placeholder:
-            print(f"Warning: Original content {original_content.pk} has no placeholder 'content'.")
+            warnings.warn(
+                f"Original content {original_content.pk} has no placeholder 'content'.",
+                RuntimeWarning,
+            )
         if not new_placeholder:
-            print(f"Warning: New content {new_content.pk} could not get/create placeholder 'content'.")
+            warnings.warn(
+                f"New content {new_content.pk} could not get/create placeholder 'content'.",
+                RuntimeWarning,
+            )
 
+# Return the duplicated instance
     return new_content
+
+
+# ---------------------------------------------------------------------------
+# Compatibility shims for newer djangocms-versioning APIs
+from djangocms_versioning.models import Version, VersionQuerySet  # noqa: E402
+
+if not hasattr(VersionQuerySet, "filter_by_content"):
+    def filter_by_content(self, content):
+        ct = ContentType.objects.get_for_model(type(content))
+        return self.filter(content_type=ct, object_id=content.pk)
+
+    VersionQuerySet.filter_by_content = filter_by_content
+    Version.objects.filter_by_content = filter_by_content.__get__(Version.objects)
+    ManagerCls = type(Version.objects)
+    if not hasattr(ManagerCls, "filter_by_content"):
+        def manager_filter_by_content(self, content):
+            return self.get_queryset().filter_by_content(content)
+        ManagerCls.filter_by_content = manager_filter_by_content
+
+if not hasattr(VersionQuerySet, "filter_by_grouper"):
+    def filter_by_grouper(self, grouper):
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+        content_ids = ArticleContent._original_manager.filter(
+            article_grouper=grouper
+        ).values_list("pk", flat=True)
+        return self.filter(content_type=content_type, object_id__in=content_ids)
+
+    VersionQuerySet.filter_by_grouper = filter_by_grouper
+    Version.objects.filter_by_grouper = filter_by_grouper.__get__(Version.objects)
+    ManagerCls = type(Version.objects)
+    if not hasattr(ManagerCls, "filter_by_grouper"):
+        def manager_filter_by_grouper(self, grouper):
+            return self.get_queryset().filter_by_grouper(grouper)
+        ManagerCls.filter_by_grouper = manager_filter_by_grouper

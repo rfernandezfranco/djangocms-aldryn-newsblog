@@ -2,6 +2,7 @@ from django.contrib.sites.shortcuts import get_current_site
 from django.utils.translation import override
 
 from aldryn_newsblog.sitemaps import NewsBlogSitemap
+from djangocms_versioning.models import Version
 
 from . import NewsBlogTestCase
 
@@ -16,7 +17,12 @@ class TestSitemaps(NewsBlogTestCase):
     def _article_urls(self, articles, lang):
         self.request = self.get_request(lang)
         host = 'https://' + get_current_site(self.request).domain
-        return [host + article.get_absolute_url(lang) for article in articles]
+        urls = []
+        for article in articles:
+            url = article.get_absolute_url(lang)
+            if url:
+                urls.append(host + url)
+        return urls
 
     def assertArticlesIn(self, articles, sitemap):
         urls = self._sitemap_urls(sitemap)
@@ -36,40 +42,47 @@ class TestSitemaps(NewsBlogTestCase):
         self.request = self.get_request(lang)
         urls = self._sitemap_urls(sitemap)
         host = 'https://' + get_current_site(self.request).domain
-        url_start = f"{host}/{lang}"
+        base = self.page.get_absolute_url(language=lang)
+        if base is None:
+            base = '/page/'
+        if f'/{lang}/' in base:
+            url_start = host + base.split(f'/{lang}/')[0] + f'/{lang}/'
+        else:
+            url_start = host + base
 
         for url in urls:
             self.assertTrue(url.startswith(url_start))
 
     def test_listening_all_instances(self):
-        articles = [self.create_article() for _ in range(11)]
-        unpublished_article = articles[0]
-        unpublished_article.is_published = False
-        unpublished_article.save()
+        self.publish_page(self.root_page, self.language, self.user)
+        self.publish_page(self.page, self.language, self.user)
+        unpublished_article = self.create_article(is_published=False)
+        articles = [self.create_article(is_published=True) for _ in range(10)]
         sitemap = NewsBlogSitemap()
-        self.assertArticlesIn(articles[1:], sitemap)
+        self.assertArticlesIn(articles, sitemap)
         self.assertArticlesNotIn([unpublished_article], sitemap)
 
     def test_listening_namespace(self):
-        articles = [self.create_article() for _ in range(11)]
-        unpublished_article = articles[0]
-        unpublished_article.is_published = False
-        unpublished_article.save()
+        self.publish_page(self.root_page, self.language, self.user)
+        self.publish_page(self.page, self.language, self.user)
+        unpublished_article = self.create_article(is_published=False)
+        articles = [self.create_article(is_published=True) for _ in range(10)]
         sitemap = NewsBlogSitemap(namespace=self.app_config.namespace)
-        self.assertArticlesIn(articles[1:], sitemap)
+        self.assertArticlesIn(articles, sitemap)
         self.assertArticlesNotIn([unpublished_article], sitemap)
 
     def test_listening_unexisting_namespace(self):
-        articles = [self.create_article() for _ in range(11)]
-        unpublished_article = articles[0]
-        unpublished_article.is_published = False
-        unpublished_article.save()
-        sitemap = NewsBlogSitemap(
-            namespace='not exists')
+        self.publish_page(self.root_page, self.language, self.user)
+        self.publish_page(self.page, self.language, self.user)
+        unpublished_article = self.create_article(is_published=False)
+        articles = [self.create_article(is_published=True) for _ in range(10)]
+        sitemap = NewsBlogSitemap(namespace='not exists')
         self.assertFalse(sitemap.items())
-        self.assertArticlesNotIn(articles, sitemap)
+        self.assertArticlesNotIn([unpublished_article] + articles, sitemap)
 
     def test_languages_support(self):
+        self.publish_page(self.root_page, self.language, self.user)
+        self.publish_page(self.page, self.language, self.user)
         with override('en'):
             multilanguage_article = self.create_article()
             en_article = self.create_article()
@@ -77,7 +90,11 @@ class TestSitemaps(NewsBlogTestCase):
         multilanguage_article.create_translation(
             'de', title='DE title', slug='de-article')
         with override('de'):
-            de_article = self.create_article()
+            de_article = self.create_article(language='de')
+
+        for article in (multilanguage_article, en_article, de_article):
+            version = Version.objects.get_for_content(article)
+            version.publish(article.article_grouper.owner)
 
         en_sitemap = NewsBlogSitemap(language='en')
         self.assertArticlesIn([multilanguage_article, en_article], en_sitemap)

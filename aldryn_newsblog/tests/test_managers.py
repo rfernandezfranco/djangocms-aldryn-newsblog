@@ -30,7 +30,7 @@ class TestManagers(NewsBlogTestCase):
         published_versions = Version.objects.filter(
             content_type=content_type,
             state=PUBLISHED,
-            published__lte=now()
+            created__lte=now()
         )
         published_pks = published_versions.values_list('object_id', flat=True)
 
@@ -60,7 +60,6 @@ class TestManagers(NewsBlogTestCase):
         self.assertIsNotNone(ac_to_unpublish.get_absolute_url(), "Published article should have a URL.")
 
         version.unpublish(self.staff_user)
-        version.refresh_from_db()
         # ac_to_unpublish's version is now unpublished.
 
         self.assertIsNone(ac_to_unpublish.get_absolute_url(),

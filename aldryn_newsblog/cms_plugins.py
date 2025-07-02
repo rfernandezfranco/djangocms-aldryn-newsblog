@@ -77,7 +77,6 @@ class NewsBlogArchivePlugin(AdjustableCacheMixin, NewsBlogPlugin):
 
     def render(self, context, instance, placeholder):
         context = super().render(context, instance, placeholder)
-        request = context.get('request')
         context['instance'] = instance
 
         from django.db.models.functions import TruncMonth
@@ -85,7 +84,7 @@ class NewsBlogArchivePlugin(AdjustableCacheMixin, NewsBlogPlugin):
         from djangocms_versioning.constants import PUBLISHED
         from djangocms_versioning.models import Version
         from django.contrib.contenttypes.models import ContentType
-        from ..models import ArticleContent
+        from .models import ArticleContent
 
         content_type = ContentType.objects.get_for_model(ArticleContent)
 
@@ -98,10 +97,10 @@ class NewsBlogArchivePlugin(AdjustableCacheMixin, NewsBlogPlugin):
             ).values_list('pk', flat=True)
         )
 
-        # Get distinct months from the 'published' field of these versions
-        # and count the number of articles (versions) in each month.
+        # Get distinct months from the version creation date and count the
+        # number of articles (versions) in each month.
         dates_data = versions_qs.annotate(
-            month=TruncMonth('published')  # Truncates datetime to the first day of the month
+            month=TruncMonth('created')  # Truncates datetime to the first day of the month
         ).values('month').annotate(
             num_articles=Count('id')  # Count versions per month
         ).order_by('-month')  # Order by month descending (most recent first)
@@ -207,18 +206,9 @@ class NewsBlogRelatedPlugin(AdjustableCacheMixin, NewsBlogPlugin):
             view_name = request.resolver_match.view_name
             namespace = request.resolver_match.namespace
             if view_name == f'{namespace}:article-detail':
-                # CONFIRMED #VERSIONING: This relies on the default manager of ArticleContent
-                # (models.ArticleContent.objects) to be versioning-aware and return only
-                # content linked to a currently published version in a frontend context.
-                # Parler's active_translations() further filters this by language.
-                # Slug for lookup is on ArticleContent.
                 article_slug = request.resolver_match.kwargs.get('slug')
-                if not article_slug: # Should always be present based on URL patterns
+                if not article_slug:
                     return None
-
-                # Assuming self.config is available if this plugin is apphook-config aware,
-                # which it isn't directly (NewsBlogRelatedPlugin is not a NewsBlogCMSPlugin subclass).
-                # The current article's app_config needs to be inferred if filtering by it is desired.
                 # For now, let's assume slug is unique enough for lookup or context provides app_config.
                 # If multiple apphooks could have same slug, this might need refinement.
                 article_content = models.ArticleContent.objects.active_translations(
@@ -279,7 +269,7 @@ class NewsBlogSerialEpisodesPlugin(AdjustableCacheMixin, NewsBlogPlugin):
             published_content_pks_for_serial_qs = Version.objects.filter(
                 content_type=content_type_ac,
                 state=PUBLISHED,
-                published__lte=timezone.now(),
+                created__lte=timezone.now(),
                 object_id__in=models.ArticleContent.objects.filter(
                     article_grouper__serial=current_serial
                 ).values_list('pk', flat=True)
