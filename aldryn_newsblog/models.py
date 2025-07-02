@@ -223,10 +223,10 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             lookup_model = self.__class__
         manager = getattr(lookup_model, '_original_manager', lookup_model.objects)
         qs = manager.language(language)
-        if not self.slug_globally_unique:
+        if not self.slug_globally_unique and self.article_grouper_id:
             qs = qs.filter(
                 translations__language_code=language,
-                article_grouper=self.article_grouper,
+                article_grouper_id=self.article_grouper_id,
             )
         if self.pk:
             qs = qs.exclude(pk=self.pk)
