@@ -24,22 +24,6 @@ from django.conf import settings
 from djangocms_versioning.admin import ExtendedGrouperVersionAdminMixin, StateIndicatorMixin, ExtendedVersionAdminMixin
 
 
-def make_published(modeladmin, request, queryset):
-    queryset.update(is_published=True)
-
-
-make_published.short_description = _(
-    "Mark selected articles as published")
-
-
-def make_unpublished(modeladmin, request, queryset):
-    queryset.update(is_published=False)
-
-
-make_unpublished.short_description = _(
-    "Mark selected articles as not published")
-
-
 def make_featured(modeladmin, request, queryset):
     queryset.update(is_featured=True)
 

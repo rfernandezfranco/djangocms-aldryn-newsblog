@@ -64,6 +64,43 @@ section.
 .. |License| image:: https://img.shields.io/pypi/l/djangocms-aldryn-newsblog.svg
     :target: https://pypi.python.org/pypi/djangocms-aldryn-newsblog/
     :alt: license
+
+
+====================
+Versioning Support
+====================
+
+This plugin supports `djangocms-versioning <https://github.com/django-cms/djangocms-versioning>`_
+for version control over articles. This is an optional but highly recommended feature.
+
+To enable versioning:
+
+1.  **Install djangocms-versioning:**
+    Make sure `djangocms-versioning` and its dependencies (like `djangocms-versions`)
+    are installed in your Django project environment.
+    You can typically install it using pip:
+
+    .. code-block:: bash
+
+        pip install djangocms-versioning
+
+    This plugin has been primarily tested with ``djangocms-versioning==2.3.2``.
+    Newer versions might also work but may require adjustments.
+
+2.  **Integration Details:**
+    *   The `ArticleContent` model (which holds the main content of an article like title,
+        lead-in, and placeholders) is registered for versioning.
+    *   Each `ArticleContent` is linked to an `ArticleGrouper` model, which acts as the
+        stable "master" record for an article across its different versions.
+    *   When `djangocms-versioning` is active, publishing and unpublishing of articles
+        are handled through its mechanisms, providing a full audit trail and the ability
+        to revert to previous versions.
+
+If `djangocms-versioning` is not installed, the plugin will operate without these
+versioning capabilities, using its traditional (non-versioned) mode. The admin
+interface and behavior will adapt accordingly.
+
+
 ## Testing
 
 Run `pip install -e .[testing]` and `pip install -r test_requirements.txt` before

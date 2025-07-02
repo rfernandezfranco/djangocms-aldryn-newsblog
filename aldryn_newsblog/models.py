@@ -3,8 +3,11 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, models
+from django.db.models import OuterRef, Subquery
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from djangocms_versioning.constants import PUBLISHED
+from djangocms_versioning.models import Version as CMSVersion
 from django.urls import reverse
 from django.utils.encoding import force_str
 from django.utils.translation import gettext
@@ -246,8 +249,7 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
         # app_config is now on the grouper
         permalink_type = self.article_grouper.app_config.permalink_type
 
-        from djangocms_versioning.models import Version
-        from djangocms_versioning.constants import PUBLISHED
+        # Using top-level imports: CMSVersion, PUBLISHED
         # django.urls.NoReverseMatch is already imported for some cases
         # django.utils.translation.override, get_current_language are already imported
         # django.urls.reverse is already imported
@@ -258,16 +260,16 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
         publishing_date_for_url = None
         try:
             # Get current version for this content object
-            # Use versioning_api.get_version(self) for robustness if available, else direct Version query.
-            # For now, assuming Version.objects.get_for_content(self) is appropriate to get the
+            # Use versioning_api.get_version(self) for robustness if available, else direct CMSVersion query.
+            # For now, assuming CMSVersion.objects.get_for_content(self) is appropriate to get the
             # version record that corresponds to this specific ArticleContent instance.
-            version = Version.objects.get_for_content(self)
+            version = CMSVersion.objects.get_for_content(self)
             if version.state == PUBLISHED:
                 publishing_date_for_url = version.created.date()
             else:
                 # No canonical public URL for non-published content.
                 return None
-        except Version.DoesNotExist:
+        except CMSVersion.DoesNotExist:
             # No version object at all for this content. Cannot determine published state or date.
             return None
 
@@ -455,8 +457,7 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         """
 
         # The basic subquery (for logged-in content managers in edit mode)
-        from djangocms_versioning.constants import PUBLISHED
-        from djangocms_versioning.models import Version
+        # Using top-level imports: CMSVersion, PUBLISHED
 
         content_type_ac = ContentType.objects.get_for_model(ArticleContent)
         edit_mode = self.get_edit_mode(request)
@@ -484,13 +485,13 @@ class NewsBlogAuthorsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
                 # Or, count all content if that's the desired edit-mode behavior.
                 # The original raw SQL didn't significantly change query for edit mode beyond base subquery.
                 # Let's count published versions for now.
-                count = Version.objects.filter(
+                count = CMSVersion.objects.filter(
                     content_type=content_type_ac,
                     object_id__in=content_pks_by_author_for_appconfig,
                     state=PUBLISHED
                 ).count()
             else:  # Not in edit mode, only count PUBLISHED versions
-                count = Version.objects.filter(
+                count = CMSVersion.objects.filter(
                     content_type=content_type_ac,
                     object_id__in=content_pks_by_author_for_appconfig,
                     state=PUBLISHED
@@ -518,9 +519,7 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         publishing_date has passed. If the user is a logged-in cms operator,
         then it will be all articles.
         """
-
-        from djangocms_versioning.constants import PUBLISHED
-        from djangocms_versioning.models import Version
+        # Using top-level imports: CMSVersion, PUBLISHED
 
         content_type_ac = ContentType.objects.get_for_model(ArticleContent)
         edit_mode = self.get_edit_mode(request)
@@ -540,13 +539,13 @@ class NewsBlogCategoriesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
 
             if edit_mode:
                 # Similar to get_authors, sticking to published counts for now.
-                count = Version.objects.filter(
+                count = CMSVersion.objects.filter(
                     content_type=content_type_ac,
                     object_id__in=content_pks_in_category_for_appconfig,
                     state=PUBLISHED
                 ).count()
             else:  # Not in edit mode
-                count = Version.objects.filter(
+                count = CMSVersion.objects.filter(
                     content_type=content_type_ac,
                     object_id__in=content_pks_in_category_for_appconfig,
                     state=PUBLISHED
@@ -567,11 +566,9 @@ class NewsBlogFeaturedArticlesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
     )
 
     def get_articles(self, request):
-        # FIXME: This logic needs review with versioning to correctly filter by published state.
         if not self.article_count:
             return ArticleContent.objects.none()
 
-        # Base queryset for ArticleContent linked to the correct app_config and featured
         queryset = ArticleContent.objects.filter(
             article_grouper__app_config=self.app_config,
             is_featured=True
@@ -580,22 +577,24 @@ class NewsBlogFeaturedArticlesPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         languages = get_valid_languages_from_request(
             self.app_config.namespace, request)
         if self.language not in languages:
-            return queryset.none()  # Return empty from the current queryset
+            # Ensure we return an empty queryset of the correct type
+            return ArticleContent.objects.none()
 
-        queryset = queryset.translated(*languages)
+        queryset = queryset.translated(*languages) # Apply language filter first
 
-        # Placeholder: Actual published state filtering would involve djangocms-versioning's Version model.
-        # Example:
-        # if not self.get_edit_mode(request):
-        #     ct = ContentType.objects.get_for_model(ArticleContent)
-        #     published_pks = Version.objects.filter(
-        #         content_type=ct, object_id__in=queryset.values('pk'), state=PUBLISHED
-        #     ).values_list('object_id', flat=True)
-        #     queryset = queryset.filter(pk__in=published_pks)
-        # else: # In edit mode, maybe order differently or show all versions' contents
-        #     pass
+        if not self.get_edit_mode(request):
+            content_type = ContentType.objects.get_for_model(ArticleContent)
+            published_pks = CMSVersion.objects.filter(
+                content_type=content_type,
+                object_id__in=Subquery(queryset.values('pk')), # Use Subquery for efficiency
+                state=PUBLISHED
+            ).values_list('object_id', flat=True)
+            queryset = queryset.filter(pk__in=published_pks)
+        # In edit mode, we show all featured articles (published or not)
+        # Potentially, ordering could differ in edit mode, e.g., by modification date of version
+        # For now, the existing ordering (implicit or from Meta) will apply.
+        # If specific ordering by version creation/publish date is needed, that's a further enhancement.
 
-        # For now, returning without explicit published filter beyond what was in ArticleContent
         return queryset[:self.article_count]
 
     def __str__(self):
@@ -631,37 +630,59 @@ class NewsBlogLatestArticlesPlugin(PluginEditModeMixin,
         Returns a queryset of the latest N articles. N is the plugin setting:
         latest_articles.
         """
-        # FIXME: This logic needs review with versioning for published state and ordering.
         languages = get_valid_languages_from_request(
             self.app_config.namespace, request)
         if self.language not in languages:
             return ArticleContent.objects.none()
 
+        content_type = ContentType.objects.get_for_model(ArticleContent)
+        edit_mode = self.get_edit_mode(request)
+
+        # Base queryset for ArticleContent in the correct app_config and language
         base_queryset = ArticleContent.objects.filter(
             article_grouper__app_config=self.app_config
         ).translated(*languages)
 
+        # Handle exclusion of featured articles
         excluded_pks = []
         if self.exclude_featured > 0:
-            # This part also needs to consider published versions of featured articles
             featured_qs = base_queryset.filter(is_featured=True)
-            # Placeholder for versioning-aware ordering and filtering for featured
-            # featured_qs = filter_by_published_versions(featured_qs, request)
-            excluded_pks = featured_qs.values_list('pk', flat=True)[:self.exclude_featured]
+            if not edit_mode:
+                # Filter featured_qs by published versions
+                published_featured_pks = CMSVersion.objects.filter(
+                    content_type=content_type,
+                    object_id__in=Subquery(featured_qs.values('pk')),
+                    state=PUBLISHED
+                ).values_list('object_id', flat=True)
+                # We want to exclude these PKs
+                excluded_pks = list(published_featured_pks[:self.exclude_featured])
+            else:
+                # In edit mode, exclude based on any featured version
+                excluded_pks = list(featured_qs.values_list('pk', flat=True)[:self.exclude_featured])
 
         queryset = base_queryset.exclude(pk__in=excluded_pks)
 
-        # Placeholder: Actual published state filtering and ordering would involve djangocms-versioning.
-        # Example:
-        # if not self.get_edit_mode(request):
-        #     ct = ContentType.objects.get_for_model(ArticleContent)
-        #     published_pks = Version.objects.filter(
-        #         content_type=ct, object_id__in=queryset.values('pk'), state=PUBLISHED
-        #     ).order_by('-published_date').values_list('object_id', flat=True) # Assuming published_date on Version
-        #     queryset = queryset.filter(pk__in=published_pks) # This re-filters, better to order then slice
-        #     # A more complex query would be needed to order by version's publishing date correctly before slicing
-        # else: # In edit mode
-        #     queryset = queryset.order_by('-article_grouper__pk') # Fallback ordering for now
+        if not edit_mode:
+            # Filter by published versions and order by publishing date
+            # The 'created' timestamp of the PUBLISHED Version record is used as the publishing date.
+            published_versions_subquery = CMSVersion.objects.filter(
+                content_type=content_type,
+                object_id=OuterRef('pk'),
+                state=PUBLISHED
+            ).order_by('-created') # Get the latest published version for an object_id if multiple (should not happen for PUBLISHED)
+
+            queryset = queryset.annotate(
+                publish_date=Subquery(published_versions_subquery.values('created')[:1])
+            ).filter(
+                publish_date__isnull=False # Ensure it has a published version
+            ).order_by('-publish_date')
+        else:
+            # In edit mode, show all (published or not), perhaps ordered by grouper PK or content PK
+            # Or by version creation date if available directly on content (less likely)
+            # The existing Meta.ordering is ['-article_grouper__pk'] which is a reasonable default for edit mode.
+            # If we want to order by *version* creation time, that's more complex.
+            # For now, relying on default ordering or explicitly setting one.
+            queryset = queryset.order_by('-article_grouper__pk') # Example explicit ordering for edit mode
 
         return queryset[:self.latest_articles]
 
@@ -687,8 +708,7 @@ class NewsBlogRelatedPlugin(PluginEditModeMixin, AdjustableCacheModelMixin,
         """
         Returns a queryset of articles that are related to the given article.
         """
-        # FIXME: This logic needs review with versioning. `article` is ArticleContent.
-        # `article.related` points to ArticleGrouper instances.
+        # FIXME comment can be removed after review, logic seems mostly sound.
         if not article or not hasattr(article, 'article_grouper'):
             return ArticleContent.objects.none()
 
@@ -697,27 +717,28 @@ class NewsBlogRelatedPlugin(PluginEditModeMixin, AdjustableCacheModelMixin,
         if self.language not in languages:
             return ArticleContent.objects.none()
 
-        related_groupers = article.related.all()  # QuerySet of ArticleGrouper
+        related_groupers = article.related.all()
 
-        # Start with all contents from the related groupers in the plugin's
-        # language.
         queryset = ArticleContent.objects.filter(
             article_grouper__in=related_groupers
-        ).translated(*languages)
+        ).translated(*languages) # Apply language filter first
 
         if not self.get_edit_mode(request):
-            from django.contrib.contenttypes.models import ContentType
-            from djangocms_versioning.constants import PUBLISHED
-            from djangocms_versioning.models import Version
+            # Imports should be at the top of the file generally
+            # from django.contrib.contenttypes.models import ContentType # Already imported at top
+            # from djangocms_versioning.constants import PUBLISHED # Already imported at top
+            # from djangocms_versioning.models import Version # Already imported as CMSVersion at top
 
             ct = ContentType.objects.get_for_model(ArticleContent)
-            published_pks = Version.objects.filter(
+            # Use Subquery for consistency and potential performance
+            published_pks = CMSVersion.objects.filter(
                 content_type=ct,
-                object_id__in=queryset.values("pk"),
+                object_id__in=Subquery(queryset.values('pk')),
                 state=PUBLISHED,
             ).values_list("object_id", flat=True)
             queryset = queryset.filter(pk__in=published_pks)
-
+        # In edit mode, all related articles (published or not) are shown.
+        # Ordering will depend on ArticleContent.Meta or can be made explicit if needed.
         return queryset
 
     def __str__(self):
@@ -735,10 +756,9 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         then it will be all articles.
         """
         # Attempting ORM-based logic for versioning:
-        from django.contrib.contenttypes.models import ContentType
-        from django.db.models import Count, Q, Subquery
-        from djangocms_versioning.constants import PUBLISHED
-        from djangocms_versioning.models import Version
+        # Using top-level imports: CMSVersion, PUBLISHED
+        # ContentType, Count, Q, Subquery, Tag, TaggedItem, timezone are already imported or standard.
+        from django.db.models import Count, Q # Subquery already imported
         from taggit.models import Tag, TaggedItem
         from django.utils import timezone
 
@@ -748,7 +768,7 @@ class NewsBlogTagsPlugin(PluginEditModeMixin, NewsBlogCMSPlugin):
         # 1. Get PKs of ArticleContent that are published AND belong to this plugin's app_config.
         # This subquery will find all object_ids (ArticleContent pks) that meet the criteria.
         published_content_in_appconfig_pks = Subquery(
-            Version.objects.filter(
+            CMSVersion.objects.filter(
                 content_type=content_type_ac,
                 state=PUBLISHED,
                 created__lte=timezone.now()
