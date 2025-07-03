@@ -3,6 +3,7 @@ from typing import Optional
 from django.contrib import admin
 from django.urls.exceptions import NoReverseMatch
 from django.utils.translation import gettext_lazy as _
+from django.utils.encoding import force_str
 
 from cms.admin.placeholderadmin import (
     FrontendEditableAdminMixin, PlaceholderAdminMixin,
@@ -116,6 +117,25 @@ class ArticleAdminForm(TranslatableModelForm):
         if ('related' in self.fields and  # noqa: W504
                 hasattr(self.fields['related'], 'widget')):
             self.fields['related'].widget.can_add_related = False
+
+        if 'categories' in self.fields:
+            field = self.fields['categories']
+
+            def label_from_instance(obj):
+                if hasattr(obj, 'safe_translation_getter'):
+                    name = obj.safe_translation_getter('name', any_language=True)
+                    if not name:
+                        name = obj.safe_translation_getter('title', any_language=True)
+                    if not name:
+                        name = obj.safe_translation_getter('slug', any_language=True)
+                    if name:
+                        return force_str(name)
+                try:
+                    return str(obj)
+                except Exception:
+                    return force_str(getattr(obj, 'pk', ''))
+
+            field.label_from_instance = label_from_instance
 
 
 class ArticleAdmin(
