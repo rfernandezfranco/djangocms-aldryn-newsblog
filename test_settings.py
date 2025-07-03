@@ -4,8 +4,11 @@ from __future__ import unicode_literals
 
 import os
 import sys
+import importlib
 
 from django import get_version
+from django.utils import encoding as django_encoding
+from django.utils import translation as django_translation
 
 from cms import __version__ as cms_string_version
 
@@ -15,8 +18,82 @@ from looseversion import LooseVersion
 django_version = LooseVersion(get_version())
 cms_version = LooseVersion(cms_string_version)
 
+# Compatibility for packages still importing force_text from Django 5
+if not hasattr(django_encoding, "force_text"):
+    django_encoding.force_text = django_encoding.force_str
+
+if not hasattr(django_encoding, "python_2_unicode_compatible"):
+    def python_2_unicode_compatible(cls):
+        return cls
+    django_encoding.python_2_unicode_compatible = python_2_unicode_compatible
+
+if not hasattr(django_translation, "ugettext"):
+    django_translation.ugettext = django_translation.gettext
+if not hasattr(django_translation, "ugettext_lazy"):
+    django_translation.ugettext_lazy = django_translation.gettext_lazy
+
+try:
+    importlib.import_module("django.utils.six")  # pragma: no cover - used by old libs
+except Exception:  # pragma: no cover - fallback for Django>=3
+    import six
+    sys.modules["django.utils.six"] = six
+    sys.modules["django.utils.six.moves"] = six.moves
+
+try:
+    import django.conf.urls
+    from django.urls import re_path
+
+    if not hasattr(django.conf.urls, "url"):
+        django.conf.urls.url = re_path
+except Exception:
+    pass
+
+# Alias djangocms_text for backwards compatibility
+
+try:
+    importlib.import_module("djangocms_text")
+except ModuleNotFoundError:  # pragma: no cover - alias when module not present
+    try:
+        text_mod = importlib.import_module("djangocms_text_ckeditor")
+        sys.modules["djangocms_text"] = text_mod
+        try:
+            from djangocms_text_ckeditor.apps import TextCkeditorConfig
+
+            TextCkeditorConfig.label = "djangocms_text"
+        except Exception:  # pragma: no cover - app label may not exist
+            pass
+        # plugin compatibility handled after Django setup
+    except Exception:
+        pass
+
+
+def patch_text_plugin():
+    try:
+        from djangocms_text_ckeditor.models import Text
+
+        if not hasattr(Text, "djangocms_text_text"):
+            Text.djangocms_text_text = property(lambda self: self)
+    except Exception:
+        pass
+    try:
+        from cms.models.pluginmodel import CMSPlugin
+
+        if not hasattr(CMSPlugin, "djangocms_text_text"):
+            if hasattr(CMSPlugin, "djangocms_text_ckeditor_text"):
+                CMSPlugin.djangocms_text_text = property(
+                    lambda self: self.djangocms_text_ckeditor_text
+                )
+            else:  # pragma: no cover - fallback to plugin instance
+                CMSPlugin.djangocms_text_text = property(
+                    lambda self: self.get_plugin_instance()[0]
+                )
+    except Exception:
+        pass
+
+
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
+    'SECRET_KEY': 'not-so-secret',
     'INSTALLED_APPS': [
         'djangocms_alias',
         'djangocms_versioning',
@@ -179,6 +256,7 @@ def run():
     # added to settings
     extra_args = sys.argv[1:] if len(sys.argv) > 1 else []
     runner.cms('aldryn_newsblog', [sys.argv[0]], extra_args=extra_args)
+    patch_text_plugin()
 
 
 if __name__ == "__main__":

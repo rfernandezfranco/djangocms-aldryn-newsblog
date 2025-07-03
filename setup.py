@@ -19,6 +19,7 @@ REQUIREMENTS = [
     'lxml~=5.4',
     'lxml_html_clean~=0.4',
     'looseversion~=1.3',
+    'djangocms-versioning',
 ]
 
 # https://pypi.python.org/pypi?%3Aaction=list_classifiers

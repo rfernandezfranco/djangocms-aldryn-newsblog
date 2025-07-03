@@ -3,6 +3,7 @@ from typing import Optional
 from django.contrib import admin
 from django.urls.exceptions import NoReverseMatch
 from django.utils.translation import gettext_lazy as _
+from django.utils.encoding import force_str
 
 from cms.admin.placeholderadmin import (
     FrontendEditableAdminMixin, PlaceholderAdminMixin,
@@ -15,6 +16,16 @@ from parler.admin import TranslatableAdmin
 from parler.forms import TranslatableModelForm
 
 from . import models
+
+try:
+    from djangocms_versioning.admin import ExtendedIndicatorVersionAdminMixin
+
+    if hasattr(models.Article, "_original_manager"):
+        VersioningMixin = ExtendedIndicatorVersionAdminMixin
+    else:  # pragma: no cover - versioning not enabled for Article
+        VersioningMixin = type("VersioningMixin", (), {})
+except Exception:  # pragma: no cover - fallback when versioning not installed
+    VersioningMixin = type("VersioningMixin", (), {})
 
 
 def make_published(modeladmin, request, queryset):
@@ -99,8 +110,30 @@ class ArticleAdminForm(TranslatableModelForm):
                 hasattr(self.fields['related'], 'widget')):
             self.fields['related'].widget.can_add_related = False
 
+        if 'categories' in self.fields:
+            field = self.fields['categories']
+
+            def label_from_instance(obj):
+                label = None
+                if hasattr(obj, 'safe_translation_getter'):
+                    for key in ('name', 'title', 'slug'):
+                        label = obj.safe_translation_getter(key, default=None, any_language=True)
+                        if label:
+                            break
+                if not label:
+                    for key in ('name', 'title', 'slug'):
+                        label = getattr(obj, key, None)
+                        if label:
+                            break
+                if not label:
+                    label = getattr(obj, 'pk', '')
+                return force_str(label)
+
+            field.label_from_instance = label_from_instance
+
 
 class ArticleAdmin(
+    VersioningMixin,
     AllTranslationsMixin,
     PlaceholderAdminMixin,
     FrontendEditableAdminMixin,
