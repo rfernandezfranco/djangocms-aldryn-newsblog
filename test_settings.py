@@ -4,6 +4,7 @@ from __future__ import unicode_literals
 
 import os
 import sys
+import importlib
 
 from django import get_version
 from django.utils import encoding as django_encoding
@@ -21,28 +22,38 @@ if not hasattr(django_encoding, "force_text"):
     django_encoding.force_text = django_encoding.force_str
 
 try:
-    import importlib
     importlib.import_module("django.utils.six")  # pragma: no cover - used by old libs
 except Exception:  # pragma: no cover - fallback for Django>=3
     import six
     sys.modules["django.utils.six"] = six
     sys.modules["django.utils.six.moves"] = six.moves
 
-# Alias djangocms_text for backwards compatibility
-try:  # pragma: no cover - alias when module not present
-    import importlib
-    text_mod = importlib.import_module("djangocms_text_ckeditor")
-    sys.modules["djangocms_text"] = text_mod
-    try:
-        from djangocms_text_ckeditor.apps import TextCkeditorConfig
+try:
+    import django.conf.urls
+    from django.urls import re_path
 
-        TextCkeditorConfig.label = "djangocms_text"
-    except Exception:  # pragma: no cover - app label may not exist
-        pass
-    # plugin compatibility handled after Django setup
+    if not hasattr(django.conf.urls, "url"):
+        django.conf.urls.url = re_path
 except Exception:
     pass
 
+# Alias djangocms_text for backwards compatibility
+
+try:
+    importlib.import_module("djangocms_text")
+except ModuleNotFoundError:  # pragma: no cover - alias when module not present
+    try:
+        text_mod = importlib.import_module("djangocms_text_ckeditor")
+        sys.modules["djangocms_text"] = text_mod
+        try:
+            from djangocms_text_ckeditor.apps import TextCkeditorConfig
+
+            TextCkeditorConfig.label = "djangocms_text"
+        except Exception:  # pragma: no cover - app label may not exist
+            pass
+        # plugin compatibility handled after Django setup
+    except Exception:
+        pass
 
 def patch_text_plugin():
     try:
@@ -69,6 +80,7 @@ def patch_text_plugin():
 
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
+    'SECRET_KEY': 'not-so-secret',
     'INSTALLED_APPS': [
         'djangocms_alias',
         'djangocms_versioning',
