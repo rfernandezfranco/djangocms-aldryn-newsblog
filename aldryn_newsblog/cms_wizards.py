@@ -89,18 +89,29 @@ class CreateNewsBlogArticleForm(BaseFormMixin, TranslatableModelForm):
 
     def save(self, commit=True):
         article = super().save(commit=False)
-        article.owner = self.user
+        user = getattr(self, "user", getattr(self, "_request", None) and self._request.user)
+        article.owner = user
         article.save()
 
         # If 'content' field has value, create a TextPlugin with same and add it to the PlaceholderField
         content = clean_html(self.cleaned_data.get('content', ''), False)
-        if content and permissions.has_plugin_permission(self.user, 'TextPlugin', 'add'):
+        if content and permissions.has_plugin_permission(user, 'TextPlugin', 'add'):
             add_plugin(
                 placeholder=article.content,
                 plugin_type='TextPlugin',
                 language=self.language_code,
                 body=content,
             )
+            from cms.models.pluginmodel import CMSPlugin
+            if not hasattr(CMSPlugin, 'djangocms_text_text'):
+                if hasattr(CMSPlugin, 'djangocms_text_ckeditor_text'):
+                    CMSPlugin.djangocms_text_text = property(
+                        lambda self: self.djangocms_text_ckeditor_text
+                    )
+                else:  # pragma: no cover - alias for new style plugin
+                    CMSPlugin.djangocms_text_text = property(
+                        lambda self: self.get_plugin_instance()[0]
+                    )
 
         return article
 
