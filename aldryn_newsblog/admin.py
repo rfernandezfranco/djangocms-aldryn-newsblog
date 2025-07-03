@@ -193,8 +193,7 @@ class ArticleContentAdmin(
     fieldsets = (
         (None, {
             'fields': (
-                # 'article_grouper',  # Should NOT be editable here; it's fixed for a version.
-                #                        ExtendedVersionAdminMixin handles this link.
+                'article_grouper',
                 'title',
                 'is_featured',
                 'lead_in',
