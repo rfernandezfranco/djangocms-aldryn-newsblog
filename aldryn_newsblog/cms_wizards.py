@@ -102,6 +102,16 @@ class CreateNewsBlogArticleForm(BaseFormMixin, TranslatableModelForm):
                 language=self.language_code,
                 body=content,
             )
+            from cms.models.pluginmodel import CMSPlugin
+            if not hasattr(CMSPlugin, 'djangocms_text_text'):
+                if hasattr(CMSPlugin, 'djangocms_text_ckeditor_text'):
+                    CMSPlugin.djangocms_text_text = property(
+                        lambda self: self.djangocms_text_ckeditor_text
+                    )
+                else:  # pragma: no cover - alias for new style plugin
+                    CMSPlugin.djangocms_text_text = property(
+                        lambda self: self.get_plugin_instance()[0]
+                    )
 
         return article
 

@@ -24,6 +24,16 @@ except Exception:  # pragma: no cover - fallback when versioning not installed
 
 from . import models
 
+try:
+    from djangocms_versioning.admin import ExtendedIndicatorVersionAdminMixin
+
+    if hasattr(models.Article, "_original_manager"):
+        VersioningMixin = ExtendedIndicatorVersionAdminMixin
+    else:  # pragma: no cover - versioning not enabled for Article
+        VersioningMixin = type("VersioningMixin", (), {})
+except Exception:  # pragma: no cover - fallback when versioning not installed
+    VersioningMixin = type("VersioningMixin", (), {})
+
 
 def make_published(modeladmin, request, queryset):
     queryset.update(is_published=True)
