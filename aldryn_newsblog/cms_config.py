@@ -11,6 +11,11 @@ from .models import ArticleContent, article_content_copy  # article_content_copy
 
 class NewsBlogCMSConfig(CMSAppConfig):
     djangocms_versioning_enabled = bool(VersionableItem)
+    # Enable django CMS integration so that articles can be previewed and edited
+    # through the CMS toolbar. The cms_toolbar_enabled_models attribute tells
+    # django CMS which models provide frontend rendering support.
+    cms_enabled = True
+    cms_toolbar_enabled_models = [ArticleContent]
     versioning = []
     if VersionableItem:
         versioning = [
