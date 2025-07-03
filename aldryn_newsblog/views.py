@@ -66,15 +66,17 @@ class StrictSlugMixin(TranslatableSlugMixin):
     def get_language_choices(self):
         language = self.get_language()
         site_id = getattr(settings, 'SITE_ID', 1)
-        langs = settings.PARLER_LANGUAGES.get(site_id, [])
-        default = settings.PARLER_LANGUAGES.get('default', {})
-        hide = default.get('hide_untranslated', False)
-        for cfg in langs:
-            if cfg.get('code') == language:
-                hide = cfg.get('hide_untranslated', hide)
-                break
-        if hide:
-            return [language]
+        parler_settings = getattr(settings, 'PARLER_LANGUAGES', None)
+        if parler_settings:
+            langs = parler_settings.get(site_id, [])
+            default = parler_settings.get('default', {})
+            hide = default.get('hide_untranslated', False)
+            for cfg in langs:
+                if cfg.get('code') == language:
+                    hide = cfg.get('hide_untranslated', hide)
+                    break
+            if hide:
+                return [language]
         return super().get_language_choices()
 
 
@@ -129,14 +131,14 @@ class PreviewModeMixin(EditModeMixin):
         # Order the queryset by the creation date of the published version so
         # pagination is deterministic across CMS versions.
         # This also effectively filters for published articles for non-staff/non-edit mode users.
-        content_type = ContentType.objects.get_for_model(ArticleContent) # ArticleContent is self.model
+        content_type = ContentType.objects.get_for_model(ArticleContent)  # ArticleContent is self.model
 
         # Subquery for published date
         published_date_sq = Version.objects.filter(
             object_id=OuterRef('pk'),
-            content_type=content_type, # Use ContentType of self.model
+            content_type=content_type,  # Use ContentType of self.model
             state=PUBLISHED,
-        ).values('created')[:1] # Get the latest publish date if multiple (should not happen for PUBLISHED state)
+        ).values('created')[:1]  # Get the latest publish date if multiple (should not happen for PUBLISHED state)
 
         qs = qs.annotate(
             version_published_date=Subquery(published_date_sq)
@@ -148,7 +150,7 @@ class PreviewModeMixin(EditModeMixin):
 
         # Always order by published date for consistency in public view.
         # In edit mode, other orderings might be considered, but this provides a stable default.
-        qs = qs.order_by('-version_published_date', '-pk') # Added '-pk' for deterministic secondary sort
+        qs = qs.order_by('-version_published_date', '-pk')  # Added '-pk' for deterministic secondary sort
 
         return qs
 
@@ -243,15 +245,17 @@ class ArticleDetail(
         else:
             request_lang = translation.get_language()
         site_id = getattr(settings, 'SITE_ID', 1)
-        langs = settings.PARLER_LANGUAGES.get(site_id, [])
-        default = settings.PARLER_LANGUAGES.get('default', {})
-        hide = default.get('hide_untranslated', False)
-        for cfg in langs:
-            if cfg.get('code') == request_lang:
-                hide = cfg.get('hide_untranslated', hide)
-                break
-        if hide and obj.get_current_language() != request_lang:
-            raise Http404('No translation for current language')
+        parler_settings = getattr(settings, 'PARLER_LANGUAGES', None)
+        if parler_settings:
+            langs = parler_settings.get(site_id, [])
+            default = parler_settings.get('default', {})
+            hide = default.get('hide_untranslated', False)
+            for cfg in langs:
+                if cfg.get('code') == request_lang:
+                    hide = cfg.get('hide_untranslated', hide)
+                    break
+            if hide and obj.get_current_language() != request_lang:
+                raise Http404('No translation for current language')
 
         return obj
 
