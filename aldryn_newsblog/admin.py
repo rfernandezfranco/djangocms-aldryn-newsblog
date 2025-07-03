@@ -122,18 +122,20 @@ class ArticleAdminForm(TranslatableModelForm):
             field = self.fields['categories']
 
             def label_from_instance(obj):
+                label = None
                 if hasattr(obj, 'safe_translation_getter'):
-                    name = obj.safe_translation_getter('name', any_language=True)
-                    if not name:
-                        name = obj.safe_translation_getter('title', any_language=True)
-                    if not name:
-                        name = obj.safe_translation_getter('slug', any_language=True)
-                    if name:
-                        return force_str(name)
-                try:
-                    return str(obj)
-                except Exception:
-                    return force_str(getattr(obj, 'pk', ''))
+                    for key in ('name', 'title', 'slug'):
+                        label = obj.safe_translation_getter(key, default=None, any_language=True)
+                        if label:
+                            break
+                if not label:
+                    for key in ('name', 'title', 'slug'):
+                        label = getattr(obj, key, None)
+                        if label:
+                            break
+                if not label:
+                    label = getattr(obj, 'pk', '')
+                return force_str(label)
 
             field.label_from_instance = label_from_instance
 

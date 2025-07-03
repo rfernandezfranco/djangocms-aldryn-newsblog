@@ -8,6 +8,7 @@ import importlib
 
 from django import get_version
 from django.utils import encoding as django_encoding
+from django.utils import translation as django_translation
 
 from cms import __version__ as cms_string_version
 
@@ -20,6 +21,16 @@ cms_version = LooseVersion(cms_string_version)
 # Compatibility for packages still importing force_text from Django 5
 if not hasattr(django_encoding, "force_text"):
     django_encoding.force_text = django_encoding.force_str
+
+if not hasattr(django_encoding, "python_2_unicode_compatible"):
+    def python_2_unicode_compatible(cls):
+        return cls
+    django_encoding.python_2_unicode_compatible = python_2_unicode_compatible
+
+if not hasattr(django_translation, "ugettext"):
+    django_translation.ugettext = django_translation.gettext
+if not hasattr(django_translation, "ugettext_lazy"):
+    django_translation.ugettext_lazy = django_translation.gettext_lazy
 
 try:
     importlib.import_module("django.utils.six")  # pragma: no cover - used by old libs
