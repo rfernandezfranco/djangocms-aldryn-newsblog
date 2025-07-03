@@ -23,7 +23,11 @@ def render_articlecontent(request, obj):
             namespace = obj.article_grouper.app_config.namespace
         except Exception:
             namespace = None
-    return TemplateResponse(request, template, context, current_app=namespace)
+
+    response = TemplateResponse(request, template, context)
+    if namespace:
+        response.current_app = namespace
+    return response
 
 
 class NewsBlogCMSConfig(CMSAppConfig):
