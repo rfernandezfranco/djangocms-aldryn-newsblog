@@ -206,6 +206,11 @@ class Article(TranslatedAutoSlugifyMixin,
         if 's' in permalink_type:
             slug, lang = self.known_translation_getter(
                 'slug', default=None, language_code=language)
+            if not slug:
+                # Fallback to any available language to avoid NoReverseMatch
+                slug = self.safe_translation_getter(
+                    'slug', default=None, any_language=True)
+                lang = language
             if slug and lang:
                 site_id = getattr(settings, 'SITE_ID', None)
                 if get_redirect_on_fallback(language, site_id):
