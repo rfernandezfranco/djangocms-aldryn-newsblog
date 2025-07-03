@@ -220,6 +220,8 @@ class ArticleContentAdmin(
         }),
     )
     filter_horizontal = ['categories', 'related']
+    # Allow filtering ArticleContent by the app_config of its grouper
+    list_filter = ['article_grouper__app_config']
 
     def get_view_on_site_url(self, obj=None) -> Optional[str]:
         if obj is not None:
