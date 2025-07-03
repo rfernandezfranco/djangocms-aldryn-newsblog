@@ -14,6 +14,14 @@ from aldryn_translation_tools.admin import AllTranslationsMixin
 from parler.admin import TranslatableAdmin
 from parler.forms import TranslatableModelForm
 
+try:
+    from djangocms_versioning.admin import (
+        ExtendedIndicatorVersionAdminMixin,
+    )
+    VersioningMixin = ExtendedIndicatorVersionAdminMixin
+except Exception:  # pragma: no cover - fallback when versioning not installed
+    VersioningMixin = object
+
 from . import models
 
 try:

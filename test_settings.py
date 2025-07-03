@@ -55,7 +55,6 @@ except ModuleNotFoundError:  # pragma: no cover - alias when module not present
     except Exception:
         pass
 
-
 def patch_text_plugin():
     try:
         from djangocms_text_ckeditor.models import Text
@@ -78,7 +77,6 @@ def patch_text_plugin():
                 )
     except Exception:
         pass
-
 
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
