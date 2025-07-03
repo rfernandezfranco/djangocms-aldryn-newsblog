@@ -17,7 +17,13 @@ def render_articlecontent(request, obj):
         'article': obj,
         'object': obj,
     }
-    return TemplateResponse(request, template, context)
+    namespace = None
+    if getattr(obj, 'article_grouper_id', None):
+        try:
+            namespace = obj.article_grouper.app_config.namespace
+        except Exception:
+            namespace = None
+    return TemplateResponse(request, template, context, current_app=namespace)
 
 
 class NewsBlogCMSConfig(CMSAppConfig):
