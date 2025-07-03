@@ -67,7 +67,6 @@ def patch_text_plugin():
     except Exception:
         pass
 
-
 HELPER_SETTINGS = {
     'TIME_ZONE': 'Europe/Zurich',
     'INSTALLED_APPS': [
