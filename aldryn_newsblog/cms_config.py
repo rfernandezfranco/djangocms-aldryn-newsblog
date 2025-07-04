@@ -26,10 +26,12 @@ def render_articlecontent(request, obj):
 
     response = TemplateResponse(request, template, context)
     if namespace:
-        # ``TemplateResponse`` no longer accepts the ``current_app`` keyword in
-        # Django 5, but assigning it afterwards keeps the behaviour from older
-        # versions where the namespace influences URL reversing.
+        # ``TemplateResponse`` no longer accepts ``current_app`` in the
+        # initializer on Django 5.  Assigning it afterwards and also exposing it
+        # via the context ensures template tags like ``namespace_url`` can
+        # reverse namespaced URLs correctly.
         response.current_app = namespace
+        response.context_data['current_app'] = namespace
     return response
 
 
