@@ -11,7 +11,7 @@ from .models import ArticleContent, article_content_copy  # article_content_copy
 
 
 def render_articlecontent(request, obj):
-    """Render the given ArticleContent for admin previews."""
+    """Render the given :class:`ArticleContent` for admin previews."""
     template = getattr(obj, 'preview_template', 'aldryn_newsblog/article_detail.html')
     context = {
         'article': obj,
@@ -23,7 +23,14 @@ def render_articlecontent(request, obj):
             namespace = obj.article_grouper.app_config.namespace
         except Exception:
             namespace = None
-    return TemplateResponse(request, template, context, current_app=namespace)
+
+    response = TemplateResponse(request, template, context)
+    if namespace:
+        # ``TemplateResponse`` no longer accepts the ``current_app`` keyword in
+        # Django 5, but assigning it afterwards keeps the behaviour from older
+        # versions where the namespace influences URL reversing.
+        response.current_app = namespace
+    return response
 
 
 class NewsBlogCMSConfig(CMSAppConfig):
