@@ -178,6 +178,15 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
     )
     tags = TaggableManager(blank=True)
 
+    # Used by django CMS preview functionality. Having this attribute tells the
+    # CMS that the model provides a template that can be rendered on the
+    # frontend when previewing versions in the admin.
+    supports_preview = True
+
+    #: Template used when rendering an ArticleContent instance outside of the
+    #: normal CMS page routing.  This mirrors the default detail view template.
+    preview_template = 'aldryn_newsblog/article_detail.html'
+
     # Setting "symmetrical" to False since it's a bit unexpected that if you
     # set "B relates to A" you immediately have also "A relates to B". It have
     # to be forced to False because by default it's True if rel.to is "self":
@@ -318,6 +327,10 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
             url = reverse(f'{namespace_str}article-detail', kwargs=kwargs)
 
         return url
+
+    def get_preview_url(self, language=None):
+        """Return a URL that can be used to preview this ArticleContent."""
+        return self.get_absolute_url(language=language)
 
     def get_search_data(self, language=None, request=None):
         """

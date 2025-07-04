@@ -1,4 +1,5 @@
 from cms.app_base import CMSAppConfig
+from django.template.response import TemplateResponse
 
 try:
     from djangocms_versioning.datastructures import VersionableItem
@@ -9,8 +10,40 @@ except ImportError:  # pragma: no cover - versioning optional
 from .models import ArticleContent, article_content_copy  # article_content_copy will be the copy fn
 
 
+def render_articlecontent(request, obj):
+    """Render the given :class:`ArticleContent` for admin previews."""
+    template = getattr(obj, 'preview_template', 'aldryn_newsblog/article_detail.html')
+    context = {
+        'article': obj,
+        'object': obj,
+    }
+    namespace = None
+    if getattr(obj, 'article_grouper_id', None):
+        try:
+            namespace = obj.article_grouper.app_config.namespace
+        except Exception:
+            namespace = None
+
+    response = TemplateResponse(request, template, context)
+    if namespace:
+        # ``TemplateResponse`` no longer accepts ``current_app`` in the
+        # initializer on Django 5.  Assigning it afterwards and also exposing it
+        # via the context ensures template tags like ``namespace_url`` can
+        # reverse namespaced URLs correctly.
+        response.current_app = namespace
+        response.context_data['current_app'] = namespace
+    return response
+
+
 class NewsBlogCMSConfig(CMSAppConfig):
     djangocms_versioning_enabled = bool(VersionableItem)
+    # Enable django CMS integration so that articles can be previewed and edited
+    # through the CMS toolbar. The cms_toolbar_enabled_models attribute tells
+    # django CMS which models provide frontend rendering support.
+    cms_enabled = True
+    cms_toolbar_enabled_models = [
+        (ArticleContent, render_articlecontent, 'article_grouper'),
+    ]
     versioning = []
     if VersionableItem:
         versioning = [
