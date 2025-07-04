@@ -32,6 +32,11 @@ def render_articlecontent(request, obj):
         # reverse namespaced URLs correctly.
         response.current_app = namespace
         response.context_data['current_app'] = namespace
+        # ``namespace_url`` falls back to a ``namespace`` context variable when
+        # the request does not resolve to an application instance, which is the
+        # case for admin previews. Explicitly expose the namespace so that
+        # article_detail templates can reverse URLs correctly.
+        response.context_data['namespace'] = namespace
     return response
 
 
