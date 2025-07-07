@@ -187,6 +187,10 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
     #: normal CMS page routing.  This mirrors the default detail view template.
     preview_template = 'aldryn_newsblog/article_detail.html'
 
+    def get_template(self):
+        """Return the template used to render this object in the CMS."""
+        return self.preview_template
+
     # Setting "symmetrical" to False since it's a bit unexpected that if you
     # set "B relates to A" you immediately have also "A relates to B". It have
     # to be forced to False because by default it's True if rel.to is "self":
