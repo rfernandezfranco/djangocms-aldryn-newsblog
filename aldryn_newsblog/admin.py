@@ -193,8 +193,7 @@ class ArticleContentAdmin(
     fieldsets = (
         (None, {
             'fields': (
-                # 'article_grouper',  # Should NOT be editable here; it's fixed for a version.
-                #                        ExtendedVersionAdminMixin handles this link.
+                'article_grouper',
                 'title',
                 'is_featured',
                 'lead_in',
@@ -221,6 +220,8 @@ class ArticleContentAdmin(
         }),
     )
     filter_horizontal = ['categories', 'related']
+    # Allow filtering ArticleContent by the app_config of its grouper
+    list_filter = ['article_grouper__app_config']
 
     def get_view_on_site_url(self, obj=None) -> Optional[str]:
         if obj is not None:
