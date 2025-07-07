@@ -16,6 +16,10 @@ def render_articlecontent(request, obj):
     context = {
         'article': obj,
         'object': obj,
+        # Use the default page template when rendering outside the CMS so
+        # template inheritance works without the ``CMS_TEMPLATE`` context
+        # variable provided by a Page instance.
+        'CMS_TEMPLATE': 'page.html',
     }
     namespace = None
     if getattr(obj, 'article_grouper_id', None):

@@ -185,11 +185,19 @@ class ArticleContent(TranslatedAutoSlugifyMixin,
 
     #: Template used when rendering an ArticleContent instance outside of the
     #: normal CMS page routing.  This mirrors the default detail view template.
+
+    #: Template used when rendering an ArticleContent instance outside of the
+    #: normal CMS page routing.  This mirrors the default detail view template.
     preview_template = 'aldryn_newsblog/article_detail.html'
 
+    #: Template used by the CMS structure board to discover placeholders.
+    #: This avoids relying on the ``CMS_TEMPLATE`` context variable which is not
+    #: available when django CMS scans templates.
+    cms_structure_template = 'aldryn_newsblog/article_structure.html'
+
     def get_template(self):
-        """Return the template used to render this object in the CMS."""
-        return self.preview_template
+        """Return the template used by the CMS structure board."""
+        return self.cms_structure_template
 
     # Setting "symmetrical" to False since it's a bit unexpected that if you
     # set "B relates to A" you immediately have also "A relates to B". It have
